@@ -1,0 +1,24 @@
+{
+  "name": "nexus-erp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "NexusERP - AI-Powered Enterprise Resource Planning System",
+  "packageManager": "pnpm@10.13.1",
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=10.0.0"
+  },
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "test": "turbo test",
+    "test:e2e": "turbo test:e2e",
+    "db:migrate": "turbo db:migrate --filter=@nexus-erp/api",
+    "db:seed": "turbo db:seed --filter=@nexus-erp/api",
+    "db:generate": "turbo db:generate --filter=@nexus-erp/api",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,css,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,css,md}\"",
+    "clean": "turbo clean && rm -rf node_modules"
+  }
+}

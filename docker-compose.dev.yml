@@ -1,0 +1,86 @@
+version: '3.8'
+
+services:
+  postgres:
+    extends:
+      file: docker-compose.yml
+      service: postgres
+
+  redis:
+    extends:
+      file: docker-compose.yml
+      service: redis
+
+  meilisearch:
+    extends:
+      file: docker-compose.yml
+      service: meilisearch
+
+  minio:
+    extends:
+      file: docker-compose.yml
+      service: minio
+
+  api:
+    container_name: nexuserp-api
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: development
+    restart: unless-stopped
+    ports:
+      - '4000:4000'
+    environment:
+      NODE_ENV: development
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: nexuserp
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      MEILISEARCH_HOST: http://meilisearch:7700
+      MEILI_MASTER_KEY: nexuserp_meili_key
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: minioadmin
+      S3_SECRET_KEY: minioadmin
+      S3_BUCKET: nexuserp
+    volumes:
+      - ./apps/api/src:/app/apps/api/src
+      - ./packages:/app/packages
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      meilisearch:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - nexuserp-network
+
+  web:
+    container_name: nexuserp-web
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      target: development
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    environment:
+      NODE_ENV: development
+      NEXT_PUBLIC_API_URL: http://localhost:4000/api/v1
+    volumes:
+      - ./apps/web/src:/app/apps/web/src
+      - ./apps/web/public:/app/apps/web/public
+      - ./packages:/app/packages
+    depends_on:
+      - api
+    networks:
+      - nexuserp-network
+
+networks:
+  nexuserp-network:
+    driver: bridge

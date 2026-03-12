@@ -1,0 +1,81 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: nexuserp-postgres
+    restart: unless-stopped
+    ports:
+      - '5432:5432'
+    environment:
+      POSTGRES_DB: nexuserp
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - ./docker-data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d nexuserp']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - nexuserp-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: nexuserp-redis
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    volumes:
+      - ./docker-data/redis:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - nexuserp-network
+
+  meilisearch:
+    image: getmeili/meilisearch:latest
+    container_name: nexuserp-meilisearch
+    restart: unless-stopped
+    ports:
+      - '7700:7700'
+    environment:
+      MEILI_MASTER_KEY: nexuserp_meili_key
+    volumes:
+      - ./docker-data/meilisearch:/meili_data
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:7700/health']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - nexuserp-network
+
+  minio:
+    image: minio/minio:latest
+    container_name: nexuserp-minio
+    restart: unless-stopped
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - ./docker-data/minio:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/live']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - nexuserp-network
+
+networks:
+  nexuserp-network:
+    driver: bridge
