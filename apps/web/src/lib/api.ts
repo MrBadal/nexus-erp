@@ -59,4 +59,59 @@ export async function del<T>(url: string): Promise<T> {
   return response.data.data;
 }
 
+export function buildQueryString(params: Record<string, string | number | boolean | undefined | null>): string {
+  const searchParams = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') {
+      searchParams.append(key, String(value));
+    }
+  });
+  const qs = searchParams.toString();
+  return qs ? `?${qs}` : '';
+}
+
+export const endpoints = {
+  auth: {
+    login: '/auth/login',
+    register: '/auth/register',
+    refresh: '/auth/refresh',
+    forgotPassword: '/auth/forgot-password',
+    resetPassword: '/auth/reset-password',
+    mfaVerify: '/auth/mfa/verify',
+  },
+  accounts: {
+    list: '/finance/accounts',
+    tree: '/finance/accounts/tree',
+    get: (id: string) => `/finance/accounts/${id}`,
+    create: '/finance/accounts',
+    update: (id: string) => `/finance/accounts/${id}`,
+    delete: (id: string) => `/finance/accounts/${id}`,
+  },
+  journalEntries: {
+    list: '/finance/journal-entries',
+    get: (id: string) => `/finance/journal-entries/${id}`,
+    create: '/finance/journal-entries',
+    update: (id: string) => `/finance/journal-entries/${id}`,
+    post: (id: string) => `/finance/journal-entries/${id}/post`,
+    reverse: (id: string) => `/finance/journal-entries/${id}/reverse`,
+    delete: (id: string) => `/finance/journal-entries/${id}`,
+  },
+  invoices: {
+    list: '/finance/invoices',
+    get: (id: string) => `/finance/invoices/${id}`,
+    create: '/finance/invoices',
+    update: (id: string) => `/finance/invoices/${id}`,
+    confirm: (id: string) => `/finance/invoices/${id}/confirm`,
+    send: (id: string) => `/finance/invoices/${id}/send`,
+    payment: (id: string) => `/finance/invoices/${id}/payment`,
+    void: (id: string) => `/finance/invoices/${id}/void`,
+    delete: (id: string) => `/finance/invoices/${id}`,
+  },
+  users: {
+    list: '/users',
+    me: '/users/me',
+    get: (id: string) => `/users/${id}`,
+  },
+};
+
 export default api;
