@@ -3,15 +3,56 @@
 import { useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/stores/auth.store";
-import { post } from "@/lib/api";
-import { endpoints } from "@/lib/api";
+import api, { endpoints } from "@/lib/api";
 import type {
   LoginRequest,
-  LoginResponse,
-  RegisterRequest,
-  RegisterResponse,
   ForgotPasswordRequest,
 } from "@/types/api";
+
+/**
+ * The NestJS auth endpoints return raw JSON (not wrapped in ApiResponse),
+ * so we use `api.post` directly instead of the `post<T>` helper which
+ * expects `{ data: T }` wrapping.
+ */
+
+interface ApiAuthResponse {
+  accessToken: string;
+  refreshToken: string;
+  tokenType: string;
+  expiresIn: string;
+  user: {
+    id: string;
+    email: string;
+    firstName: string;
+    lastName: string;
+    avatarUrl?: string | null;
+    tenantId: string;
+    tenantName: string;
+    tenantSlug: string;
+  };
+}
+
+function mapAuthResponse(data: ApiAuthResponse) {
+  return {
+    user: {
+      id: data.user.id,
+      email: data.user.email,
+      firstName: data.user.firstName,
+      lastName: data.user.lastName,
+      avatarUrl: data.user.avatarUrl ?? null,
+      role: "admin" as const,
+    },
+    tokens: {
+      accessToken: data.accessToken,
+      refreshToken: data.refreshToken,
+    },
+    tenant: {
+      id: data.user.tenantId,
+      name: data.user.tenantName,
+      slug: data.user.tenantSlug,
+    },
+  };
+}
 
 export function useAuth() {
   const router = useRouter();
@@ -29,27 +70,38 @@ export function useAuth() {
 
   const login = useCallback(
     async (credentials: LoginRequest) => {
-      const response = await post<LoginResponse>(endpoints.auth.login, credentials);
-      setAuth(response.user, response.tokens, response.tenant, response.permissions);
+      const { data } = await api.post<ApiAuthResponse>(endpoints.auth.login, credentials);
+      const mapped = mapAuthResponse(data);
+      setAuth(mapped.user, mapped.tokens, mapped.tenant);
       router.push("/dashboard");
-      return response;
+      return mapped;
     },
     [setAuth, router]
   );
 
   const register = useCallback(
-    async (data: RegisterRequest) => {
-      const response = await post<RegisterResponse>(endpoints.auth.register, data);
-      setAuth(response.user, response.tokens, response.tenant, response.permissions);
+    async (data: {
+      tenantName: string;
+      tenantSlug: string;
+      firstName: string;
+      lastName: string;
+      email: string;
+      password: string;
+      phone?: string;
+      billingEmail: string;
+    }) => {
+      const { data: responseData } = await api.post<ApiAuthResponse>(endpoints.auth.register, data);
+      const mapped = mapAuthResponse(responseData);
+      setAuth(mapped.user, mapped.tokens, mapped.tenant);
       router.push("/dashboard");
-      return response;
+      return mapped;
     },
     [setAuth, router]
   );
 
   const forgotPassword = useCallback(
     async (data: ForgotPasswordRequest) => {
-      await post<{ message: string }>(endpoints.auth.forgotPassword, data);
+      await api.post(endpoints.auth.forgotPassword, data);
     },
     []
   );
@@ -66,8 +118,9 @@ export function useAuth() {
       return;
     }
     try {
-      const response = await post<LoginResponse>(endpoints.auth.refresh, { refreshToken });
-      setAuth(response.user, response.tokens, response.tenant, response.permissions);
+      const { data } = await api.post<ApiAuthResponse>(endpoints.auth.refresh, { refreshToken });
+      const mapped = mapAuthResponse(data);
+      setAuth(mapped.user, mapped.tokens, mapped.tenant);
     } catch {
       logout();
     }

@@ -134,8 +134,8 @@ export default function RegisterPage() {
     setIsSubmitting(true);
     try {
       await registerUser({
-        companyName: data.companyName,
-        companySlug: data.companySlug,
+        tenantName: data.companyName,
+        tenantSlug: data.companySlug,
         firstName: data.firstName,
         lastName: data.lastName,
         email: data.email,
