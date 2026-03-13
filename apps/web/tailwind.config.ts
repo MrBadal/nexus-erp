@@ -69,6 +69,11 @@ const config: Config = {
       },
       fontFamily: {
         sans: ["var(--font-inter)", "system-ui", "sans-serif"],
+        mono: ["JetBrains Mono", "Fira Code", "ui-monospace", "monospace"],
+      },
+      spacing: {
+        "erp-row": "32px",
+        "erp-compact": "28px",
       },
       keyframes: {
         "accordion-down": {

@@ -10,7 +10,7 @@
     --card-foreground: 210 20% 10%;
     --popover: 0 0% 100%;
     --popover-foreground: 210 20% 10%;
-    --primary: 207 60% 28%;
+    --primary: 207 63% 27%;
     --primary-foreground: 0 0% 98%;
     --secondary: 207 58% 40%;
     --secondary-foreground: 0 0% 98%;
@@ -22,7 +22,7 @@
     --destructive-foreground: 0 0% 98%;
     --border: 214 20% 90%;
     --input: 214 20% 90%;
-    --ring: 207 60% 28%;
+    --ring: 207 63% 27%;
     --radius: 0.5rem;
     --sidebar: 210 25% 97%;
     --sidebar-foreground: 210 20% 10%;
@@ -45,9 +45,9 @@
     --card-foreground: 210 20% 96%;
     --popover: 220 18% 11%;
     --popover-foreground: 210 20% 96%;
-    --primary: 207 58% 40%;
+    --primary: 207 63% 38%;
     --primary-foreground: 0 0% 98%;
-    --secondary: 207 60% 28%;
+    --secondary: 207 63% 27%;
     --secondary-foreground: 0 0% 98%;
     --muted: 220 15% 16%;
     --muted-foreground: 210 10% 55%;
@@ -57,7 +57,7 @@
     --destructive-foreground: 0 0% 98%;
     --border: 220 15% 20%;
     --input: 220 15% 20%;
-    --ring: 207 58% 40%;
+    --ring: 207 63% 38%;
     --sidebar: 220 20% 10%;
     --sidebar-foreground: 210 20% 96%;
     --sidebar-accent: 220 15% 18%;
@@ -96,4 +96,77 @@
   .text-balance {
     text-wrap: balance;
   }
+}
+
+/* ERP Data-Dense Styles */
+.erp-table th {
+  @apply text-xs font-medium text-muted-foreground uppercase tracking-wider px-3;
+  height: 36px;
+}
+.erp-table td {
+  @apply text-sm px-3 py-0 align-middle border-b border-border/50;
+  height: 36px;
+}
+.erp-table tr:hover td {
+  @apply bg-muted/50;
+}
+
+/* Monospace numbers */
+.erp-number {
+  font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+}
+.erp-number-negative {
+  font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  color: hsl(var(--destructive));
+}
+
+/* Status dots */
+.status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 8px;
+  flex-shrink: 0;
+}
+.status-dot-success { background-color: #27AE60; }
+.status-dot-warning { background-color: #F39C12; }
+.status-dot-danger { background-color: #E74C3C; }
+.status-dot-info { background-color: #2874A6; }
+.status-dot-default { background-color: #6B7280; }
+.status-dot-muted { background-color: #9CA3AF; }
+
+/* Compact form fields */
+.erp-field label {
+  @apply text-xs font-medium text-muted-foreground;
+  margin-bottom: 4px;
+  display: block;
+}
+.erp-field input,
+.erp-field select,
+.erp-field textarea {
+  @apply text-sm;
+  height: 32px;
+}
+.erp-field textarea {
+  height: auto;
+  min-height: 64px;
+}
+
+/* ERP page background */
+.erp-page {
+  background-color: hsl(var(--muted) / 0.3);
+  min-height: 100%;
+}
+
+/* Print styles */
+@media print {
+  .no-print { display: none !important; }
+  .erp-table th, .erp-table td { border: 1px solid #ddd; }
 }
