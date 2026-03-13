@@ -44,11 +44,44 @@ export interface AuthTokens {
 export interface LoginRequest {
   email: string;
   password: string;
+  tenantSlug: string;
+  rememberMe?: boolean;
 }
 
 export interface LoginResponse {
   user: User;
   tokens: AuthTokens;
+  tenant: Tenant;
+  permissions: Permission[];
+}
+
+export interface RegisterRequest {
+  companyName: string;
+  companySlug: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  password: string;
+  billingEmail: string;
+}
+
+export interface RegisterResponse {
+  user: User;
+  tokens: AuthTokens;
+  tenant: Tenant;
+  permissions: Permission[];
+}
+
+export interface ForgotPasswordRequest {
+  email: string;
+  tenantSlug: string;
+}
+
+export interface Permission {
+  id: string;
+  module: string;
+  resource: string;
+  action: string;
 }
 
 // Tenant
