@@ -22,6 +22,7 @@ interface LineRow {
   description: string;
   debit: number;
   credit: number;
+  [key: string]: unknown;
 }
 
 function emptyLine(): LineRow {

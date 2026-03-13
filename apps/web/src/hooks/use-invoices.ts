@@ -44,6 +44,7 @@ export interface InvoiceFilters {
   status?: string;
   limit?: number;
   offset?: number;
+  [key: string]: string | number | boolean | undefined | null;
 }
 
 export interface RecordPaymentData {
@@ -81,10 +82,20 @@ export function useInvoice(id: string) {
   });
 }
 
+export interface CreateInvoiceData {
+  type: string;
+  issueDate: string;
+  dueDate: string;
+  paymentTerms: string;
+  currencyCode: string;
+  notes?: string;
+  lines: Omit<InvoiceLine, 'id' | 'accountId'>[];
+}
+
 export function useCreateInvoice() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (data: Partial<Invoice> & { lines: Partial<InvoiceLine>[] }) => {
+    mutationFn: async (data: CreateInvoiceData) => {
       return post<Invoice>(endpoints.invoices.create, data);
     },
     onSuccess: () => {

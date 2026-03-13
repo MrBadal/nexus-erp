@@ -37,6 +37,7 @@ export interface JournalEntryFilters {
   status?: string;
   limit?: number;
   offset?: number;
+  [key: string]: string | number | boolean | undefined | null;
 }
 
 export const journalEntryKeys = {
@@ -67,10 +68,17 @@ export function useJournalEntry(id: string) {
   });
 }
 
+export interface CreateJournalEntryData {
+  date: string;
+  reference?: string | null;
+  description?: string | null;
+  lines: Omit<JournalLine, 'id' | 'accountCode' | 'accountName'>[];
+}
+
 export function useCreateJournalEntry() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (data: Partial<JournalEntry> & { lines: Partial<JournalLine>[] }) => {
+    mutationFn: async (data: CreateJournalEntryData) => {
       return post<JournalEntry>(endpoints.journalEntries.create, data);
     },
     onSuccess: () => {
