@@ -6,7 +6,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { eq, and, isNull } from 'drizzle-orm';
-import * as bcrypt from 'bcrypt';
+import * as bcrypt from 'bcryptjs';
 import { DATABASE, DrizzleDB } from '../../database/database.module.js';
 import { users, type NewUser } from '../../database/schema/index.js';
 

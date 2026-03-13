@@ -12,12 +12,13 @@ import { UserModule } from './modules/user/user.module.js';
 import { RoleModule } from './modules/role/role.module.js';
 import { AuditModule } from './modules/audit/audit.module.js';
 import { TenantMiddleware } from './common/middleware/tenant.middleware.js';
+import { FinanceModule } from './modules/finance/finance.module.js';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: '../../.env',
+      envFilePath: '.env',
       load: [appConfig, databaseConfig],
     }),
     LoggerModule.forRoot({
@@ -37,6 +38,7 @@ import { TenantMiddleware } from './common/middleware/tenant.middleware.js';
     UserModule,
     RoleModule,
     AuditModule,
+    FinanceModule,
   ],
 })
 export class AppModule implements NestModule {

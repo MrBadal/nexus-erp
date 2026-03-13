@@ -9,8 +9,8 @@ import {
   timestamp,
   jsonb,
 } from 'drizzle-orm/pg-core';
-import { tenants } from './tenants.js';
-import { roles } from './roles.js';
+import { tenants } from './tenants';
+import { roles } from './roles';
 
 export const userStatusEnum = pgEnum('user_status', [
   'active',

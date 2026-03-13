@@ -13,8 +13,8 @@ import {
   bigserial,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import { tenants } from './tenants.js';
-import { users } from './users.js';
+import { tenants } from './tenants';
+import { users } from './users';
 
 // ─── Enums ──────────────────────────────────────────────
 

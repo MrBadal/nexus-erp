@@ -232,7 +232,7 @@ export class JournalEntryService {
           await this.db
             .update(accounts)
             .set({
-              currentBalance: sql`(${accounts.currentBalance}::numeric + ${balanceChange})::text`,
+              currentBalance: sql`${accounts.currentBalance} + ${balanceChange}`,
               updatedAt: new Date(),
             })
             .where(eq(accounts.id, line.accountId));

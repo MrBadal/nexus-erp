@@ -9,7 +9,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import * as bcrypt from 'bcrypt';
+import * as bcrypt from 'bcryptjs';
 import { eq, and } from 'drizzle-orm';
 import { DATABASE, DrizzleDB } from '../../database/database.module.js';
 import { users, tenants, roles } from '../../database/schema/index.js';

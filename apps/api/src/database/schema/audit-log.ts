@@ -7,8 +7,8 @@ import {
   jsonb,
   bigserial,
 } from 'drizzle-orm/pg-core';
-import { tenants } from './tenants.js';
-import { users } from './users.js';
+import { tenants } from './tenants';
+import { users } from './users';
 
 export const auditActionEnum = pgEnum('audit_action', [
   'create',

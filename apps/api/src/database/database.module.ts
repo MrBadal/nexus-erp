@@ -1,11 +1,11 @@
-import { Module, Global, OnModuleDestroy, Inject } from '@nestjs/common';
+import { Module, Global } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { drizzle, NodePgDatabase } from 'drizzle-orm/node-postgres';
+import { drizzle, PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import * as schema from './schema/index.js';
 
 export const DATABASE = 'DATABASE';
-export type DrizzleDB = NodePgDatabase<typeof schema>;
+export type DrizzleDB = PostgresJsDatabase<typeof schema>;
 
 @Global()
 @Module({

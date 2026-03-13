@@ -8,7 +8,7 @@ import {
   timestamp,
   jsonb,
 } from 'drizzle-orm/pg-core';
-import { tenants } from './tenants.js';
+import { tenants } from './tenants';
 
 export const roles = pgTable('roles', {
   id: uuid('id').defaultRandom().primaryKey(),
