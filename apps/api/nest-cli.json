@@ -4,7 +4,7 @@
   "sourceRoot": "src",
   "compilerOptions": {
     "webpack": false,
-    "builder": "swc",
+    "builder": "tsc",
     "typeCheck": true
   }
 }
