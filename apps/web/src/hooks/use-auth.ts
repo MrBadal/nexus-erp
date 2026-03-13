@@ -33,23 +33,36 @@ interface ApiAuthResponse {
 }
 
 function mapAuthResponse(data: ApiAuthResponse) {
+  const now = new Date().toISOString();
   return {
     user: {
       id: data.user.id,
       email: data.user.email,
       firstName: data.user.firstName,
       lastName: data.user.lastName,
-      avatarUrl: data.user.avatarUrl ?? null,
+      fullName: `${data.user.firstName} ${data.user.lastName}`,
+      avatarUrl: data.user.avatarUrl ?? undefined,
       role: "admin" as const,
+      tenantId: data.user.tenantId,
+      isActive: true,
+      lastLoginAt: now,
+      createdAt: now,
+      updatedAt: now,
     },
     tokens: {
       accessToken: data.accessToken,
       refreshToken: data.refreshToken,
+      expiresIn: 3600,
     },
     tenant: {
       id: data.user.tenantId,
       name: data.user.tenantName,
       slug: data.user.tenantSlug,
+      currency: "USD",
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
     },
   };
 }
