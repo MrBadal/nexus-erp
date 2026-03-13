@@ -1,236 +1,290 @@
-"use client";
+'use client';
 
-import * as React from "react";
-import { type ColumnDef } from "@tanstack/react-table";
-import { Plus, Search, List, GitBranch } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { DataTable, SortableHeader } from "@/components/ui/data-table";
-import { formatCurrency } from "@/lib/utils";
-import type { Account, AccountType } from "@/types/api";
+import * as React from 'react';
+import { useState, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
+import { type ColumnDef } from '@tanstack/react-table';
+import { MoreHorizontal, GitBranch, List } from 'lucide-react';
+import { ListPage } from '@/components/layout/list-page';
+import { DataTable, SortableHeader } from '@/components/ui/data-table';
+import { TreeView, type TreeNode } from '@/components/ui/tree-view';
+import { StatusDot } from '@/components/ui/status-dot';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  useAccounts,
+  useAccountTree,
+  useDeleteAccount,
+  type Account as HookAccount,
+  type AccountTreeNode,
+} from '@/hooks/use-accounts';
+import { formatCurrency } from '@/lib/utils';
 
-// Sample data for demonstration
-const sampleAccounts: Account[] = [
-  {
-    id: "1",
-    code: "1000",
-    name: "Cash and Cash Equivalents",
-    type: "asset",
-    balance: 125000.0,
-    currency: "USD",
-    isActive: true,
-    isSystemAccount: true,
-    createdAt: "2024-01-01",
-    updatedAt: "2024-01-15",
-  },
-  {
-    id: "2",
-    code: "1100",
-    name: "Accounts Receivable",
-    type: "asset",
-    balance: 67800.0,
-    currency: "USD",
-    isActive: true,
-    isSystemAccount: true,
-    createdAt: "2024-01-01",
-    updatedAt: "2024-01-15",
-  },
-  {
-    id: "3",
-    code: "2000",
-    name: "Accounts Payable",
-    type: "liability",
-    balance: 31200.0,
-    currency: "USD",
-    isActive: true,
-    isSystemAccount: true,
-    createdAt: "2024-01-01",
-    updatedAt: "2024-01-15",
-  },
-  {
-    id: "4",
-    code: "3000",
-    name: "Owner's Equity",
-    type: "equity",
-    balance: 500000.0,
-    currency: "USD",
-    isActive: true,
-    isSystemAccount: true,
-    createdAt: "2024-01-01",
-    updatedAt: "2024-01-15",
-  },
-  {
-    id: "5",
-    code: "4000",
-    name: "Sales Revenue",
-    type: "revenue",
-    balance: 284500.0,
-    currency: "USD",
-    isActive: true,
-    isSystemAccount: false,
-    createdAt: "2024-01-01",
-    updatedAt: "2024-01-15",
-  },
-  {
-    id: "6",
-    code: "5000",
-    name: "Cost of Goods Sold",
-    type: "expense",
-    balance: 98000.0,
-    currency: "USD",
-    isActive: true,
-    isSystemAccount: false,
-    createdAt: "2024-01-01",
-    updatedAt: "2024-01-15",
-  },
-  {
-    id: "7",
-    code: "5100",
-    name: "Salaries & Wages",
-    type: "expense",
-    balance: 44300.0,
-    currency: "USD",
-    isActive: true,
-    isSystemAccount: false,
-    createdAt: "2024-01-01",
-    updatedAt: "2024-01-15",
-  },
-  {
-    id: "8",
-    code: "1200",
-    name: "Inventory",
-    type: "asset",
-    balance: 89500.0,
-    currency: "USD",
-    isActive: true,
-    isSystemAccount: false,
-    createdAt: "2024-01-01",
-    updatedAt: "2024-01-15",
-  },
-];
+// --------------------------------------------------------------------------
+// Helpers
+// --------------------------------------------------------------------------
 
-const accountTypeColors: Record<AccountType, "default" | "secondary" | "success" | "warning" | "destructive" | "outline"> = {
-  asset: "default",
-  liability: "warning",
-  equity: "secondary",
-  revenue: "success",
-  expense: "destructive",
+const accountTypeVariant: Record<string, 'default' | 'secondary' | 'success' | 'warning' | 'destructive' | 'outline'> = {
+  asset: 'default',
+  liability: 'warning',
+  equity: 'secondary',
+  revenue: 'success',
+  expense: 'destructive',
 };
 
-const columns: ColumnDef<Account>[] = [
-  {
-    accessorKey: "code",
-    header: ({ column }) => <SortableHeader column={column} title="Code" />,
-    cell: ({ row }) => (
-      <span className="font-mono text-sm font-medium">{row.getValue("code")}</span>
-    ),
-  },
-  {
-    accessorKey: "name",
-    header: ({ column }) => <SortableHeader column={column} title="Account Name" />,
-    cell: ({ row }) => (
-      <span className="font-medium">{row.getValue("name")}</span>
-    ),
-  },
-  {
-    accessorKey: "type",
-    header: "Type",
-    cell: ({ row }) => {
-      const type = row.getValue("type") as AccountType;
-      return (
-        <Badge variant={accountTypeColors[type]}>
-          {type.charAt(0).toUpperCase() + type.slice(1)}
-        </Badge>
-      );
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function balanceColor(amount: number): string {
+  if (amount > 0) return 'text-emerald-600 dark:text-emerald-400';
+  if (amount < 0) return 'text-red-600 dark:text-red-400';
+  return 'text-muted-foreground';
+}
+
+// --------------------------------------------------------------------------
+// Convert AccountTreeNode[] -> TreeNode[]
+// --------------------------------------------------------------------------
+
+function toTreeNodes(accounts: AccountTreeNode[]): TreeNode<AccountTreeNode>[] {
+  return accounts.map((a) => ({
+    id: a.id,
+    label: `${a.code} ${a.name}`,
+    data: a,
+    children: a.children.length > 0 ? toTreeNodes(a.children) : undefined,
+  }));
+}
+
+// --------------------------------------------------------------------------
+// Table columns
+// --------------------------------------------------------------------------
+
+function buildColumns(
+  onDelete: (id: string) => void,
+  router: ReturnType<typeof useRouter>,
+): ColumnDef<HookAccount, unknown>[] {
+  return [
+    {
+      accessorKey: 'code',
+      header: ({ column }) => <SortableHeader column={column}>Code</SortableHeader>,
+      cell: ({ row }) => (
+        <span className="font-mono text-xs text-muted-foreground">{row.getValue('code')}</span>
+      ),
     },
-    filterFn: (row, id, value) => value.includes(row.getValue(id)),
-  },
-  {
-    accessorKey: "balance",
-    header: ({ column }) => <SortableHeader column={column} title="Balance" />,
-    cell: ({ row }) => (
-      <span className="text-right font-mono">
-        {formatCurrency(row.getValue("balance"))}
-      </span>
-    ),
-  },
-  {
-    accessorKey: "isActive",
-    header: "Status",
-    cell: ({ row }) => (
-      <Badge variant={row.getValue("isActive") ? "success" : "outline"}>
-        {row.getValue("isActive") ? "Active" : "Inactive"}
-      </Badge>
-    ),
-  },
-];
+    {
+      accessorKey: 'name',
+      header: ({ column }) => <SortableHeader column={column}>Name</SortableHeader>,
+      cell: ({ row }) => <span className="font-medium">{row.getValue('name')}</span>,
+    },
+    {
+      accessorKey: 'accountType',
+      header: 'Type',
+      cell: ({ row }) => {
+        const t = row.getValue('accountType') as string;
+        return <Badge variant={accountTypeVariant[t] ?? 'outline'}>{capitalize(t)}</Badge>;
+      },
+    },
+    {
+      accessorKey: 'currentBalance',
+      header: ({ column }) => <SortableHeader column={column}>Balance</SortableHeader>,
+      cell: ({ row }) => {
+        const raw = row.getValue('currentBalance') as string;
+        const num = parseFloat(raw);
+        return (
+          <span className={`font-mono text-sm ${balanceColor(num)}`}>
+            {formatCurrency(num)}
+          </span>
+        );
+      },
+    },
+    {
+      accessorKey: 'isActive',
+      header: 'Status',
+      cell: ({ row }) => {
+        const active = row.getValue('isActive') as boolean;
+        return (
+          <StatusDot
+            status={active ? 'success' : 'muted'}
+            label={active ? 'Active' : 'Inactive'}
+          />
+        );
+      },
+    },
+    {
+      id: 'actions',
+      cell: ({ row }) => {
+        const account = row.original;
+        return (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={(e) => e.stopPropagation()}>
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => router.push(`/finance/accounts/${account.id}`)}>
+                View Details
+              </DropdownMenuItem>
+              {!account.isSystem && (
+                <DropdownMenuItem
+                  className="text-destructive"
+                  onClick={() => onDelete(account.id)}
+                >
+                  Delete
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        );
+      },
+    },
+  ];
+}
+
+// --------------------------------------------------------------------------
+// Loading skeleton for tree view
+// --------------------------------------------------------------------------
+
+function TreeSkeleton() {
+  return (
+    <div className="space-y-2">
+      {Array.from({ length: 8 }).map((_, i) => (
+        <div key={i} className="flex items-center gap-3" style={{ paddingLeft: `${(i % 3) * 24 + 8}px` }}>
+          <Skeleton className="h-4 w-4" />
+          <Skeleton className="h-4 w-16" />
+          <Skeleton className="h-4 w-32" />
+          <Skeleton className="ml-auto h-4 w-12" />
+          <Skeleton className="h-4 w-20" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// --------------------------------------------------------------------------
+// Page
+// --------------------------------------------------------------------------
 
 export default function ChartOfAccountsPage() {
-  const [viewMode, setViewMode] = React.useState<"table" | "tree">("table");
+  const router = useRouter();
+  const [search, setSearch] = useState('');
+
+  // Data hooks
+  const { data: accounts, isLoading: listLoading } = useAccounts();
+  const { data: tree, isLoading: treeLoading } = useAccountTree();
+  const deleteMutation = useDeleteAccount();
+
+  // Columns (stable reference)
+  const columns = useMemo(
+    () => buildColumns((id) => deleteMutation.mutate(id), router),
+    [deleteMutation, router],
+  );
+
+  // Filter list data by search
+  const filteredAccounts = useMemo(() => {
+    if (!accounts) return [];
+    if (!search.trim()) return accounts;
+    const q = search.toLowerCase();
+    return accounts.filter(
+      (a) =>
+        a.code.toLowerCase().includes(q) ||
+        a.name.toLowerCase().includes(q) ||
+        a.accountType.toLowerCase().includes(q),
+    );
+  }, [accounts, search]);
+
+  // Convert tree to TreeNode format and filter
+  const treeNodes = useMemo(() => {
+    if (!tree) return [];
+    return toTreeNodes(tree);
+  }, [tree]);
+
+  // Render a single tree node row
+  const renderTreeNode = (node: TreeNode<AccountTreeNode>, _level: number, _isExpanded: boolean) => {
+    const account = node.data;
+    if (!account) return null;
+    const balance = parseFloat(account.currentBalance);
+    return (
+      <div className="flex items-center gap-2 pr-2">
+        <span className="font-mono text-xs text-muted-foreground">{account.code}</span>
+        <span className="truncate text-sm">{account.name}</span>
+        <Badge variant={accountTypeVariant[account.accountType] ?? 'outline'} className="ml-1 text-[10px] px-1.5 py-0">
+          {capitalize(account.accountType)}
+        </Badge>
+        <span className={`ml-auto font-mono text-xs ${balanceColor(balance)}`}>
+          {formatCurrency(balance)}
+        </span>
+      </div>
+    );
+  };
+
+  const handleTreeNodeClick = (node: TreeNode<AccountTreeNode>) => {
+    router.push(`/finance/accounts/${node.id}`);
+  };
 
   return (
-    <div className="space-y-6">
-      {/* Page Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Chart of Accounts</h1>
-          <p className="text-muted-foreground">
-            Manage your organization&apos;s financial accounts
-          </p>
-        </div>
-        <Button>
-          <Plus className="mr-2 h-4 w-4" />
-          Add Account
-        </Button>
-      </div>
+    <ListPage
+      title="Chart of Accounts"
+      subtitle="Manage your organization's financial accounts"
+      breadcrumbs={[
+        { label: 'Finance', href: '/finance' },
+        { label: 'Chart of Accounts' },
+      ]}
+      createButton={{ label: 'Add Account', href: '/finance/accounts/new' }}
+    >
+      <Tabs defaultValue="tree" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="tree">
+            <GitBranch className="mr-1.5 h-4 w-4" />
+            Tree View
+          </TabsTrigger>
+          <TabsTrigger value="list">
+            <List className="mr-1.5 h-4 w-4" />
+            List View
+          </TabsTrigger>
+        </TabsList>
 
-      {/* Filters Bar */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="relative flex-1 min-w-[200px]">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input placeholder="Search accounts..." className="pl-9" />
-            </div>
-            <div className="flex items-center gap-2 border rounded-md p-1">
-              <Button
-                variant={viewMode === "table" ? "secondary" : "ghost"}
-                size="sm"
-                onClick={() => setViewMode("table")}
-              >
-                <List className="mr-1 h-4 w-4" />
-                Table
-              </Button>
-              <Button
-                variant={viewMode === "tree" ? "secondary" : "ghost"}
-                size="sm"
-                onClick={() => setViewMode("tree")}
-              >
-                <GitBranch className="mr-1 h-4 w-4" />
-                Tree
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+        {/* Tree View */}
+        <TabsContent value="tree">
+          {treeLoading ? (
+            <TreeSkeleton />
+          ) : (
+            <TreeView<AccountTreeNode>
+              nodes={treeNodes}
+              renderNode={renderTreeNode}
+              onNodeClick={handleTreeNodeClick}
+              expandAll
+              searchable
+              searchPlaceholder="Search accounts..."
+              emptyMessage="No accounts found"
+            />
+          )}
+        </TabsContent>
 
-      {/* Data Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">
-            All Accounts ({sampleAccounts.length})
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <DataTable
+        {/* List View */}
+        <TabsContent value="list">
+          <DataTable<HookAccount, unknown>
             columns={columns}
-            data={sampleAccounts}
-            searchPlaceholder="Filter by account name..."
+            data={filteredAccounts}
+            isLoading={listLoading}
+            searchPlaceholder="Search accounts..."
+            searchValue={search}
+            onSearchChange={setSearch}
+            onRowClick={(row) => router.push(`/finance/accounts/${row.id}`)}
+            emptyMessage="No accounts found."
+            enableExport
+            exportFilename="chart-of-accounts"
           />
-        </CardContent>
-      </Card>
-    </div>
+        </TabsContent>
+      </Tabs>
+    </ListPage>
   );
 }
