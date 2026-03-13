@@ -244,7 +244,6 @@ export default function InvoicesPage() {
           <DataTable
             columns={columns}
             data={sampleInvoices}
-            searchKey="customerName"
             searchPlaceholder="Search by customer..."
           />
         </CardContent>

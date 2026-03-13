@@ -218,7 +218,6 @@ export default function JournalEntriesPage() {
           <DataTable
             columns={columns}
             data={sampleEntries}
-            searchKey="description"
             searchPlaceholder="Search entries..."
           />
         </CardContent>

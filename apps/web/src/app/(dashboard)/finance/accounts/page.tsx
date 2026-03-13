@@ -227,7 +227,6 @@ export default function ChartOfAccountsPage() {
           <DataTable
             columns={columns}
             data={sampleAccounts}
-            searchKey="name"
             searchPlaceholder="Filter by account name..."
           />
         </CardContent>
