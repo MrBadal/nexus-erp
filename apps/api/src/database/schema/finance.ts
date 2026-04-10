@@ -11,6 +11,7 @@ import {
   date,
   jsonb,
   bigserial,
+  index,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { tenants } from './tenants';
@@ -183,6 +184,9 @@ export const bankImportSourceEnum = pgEnum('bank_import_source', [
   'manual',
 ]);
 
+export const tdsThresholdPeriodEnum = pgEnum('tds_threshold_period', ['annual', 'per_transaction']);
+export const tdsDeductionStatusEnum = pgEnum('tds_deduction_status', ['pending', 'deducted', 'deposited']);
+
 // ─── Tables ─────────────────────────────────────────────
 
 export const accounts = pgTable('accounts', {
@@ -194,7 +198,7 @@ export const accounts = pgTable('accounts', {
   name: varchar('name', { length: 255 }).notNull(),
   accountType: accountTypeEnum('account_type').notNull(),
   parentId: uuid('parent_id'),
-  currencyCode: varchar('currency_code', { length: 3 }).default('USD').notNull(),
+  currencyCode: varchar('currency_code', { length: 3 }).default('INR').notNull(),
   description: text('description'),
   isActive: boolean('is_active').default(true).notNull(),
   isHeader: boolean('is_header').default(false).notNull(),
@@ -208,7 +212,11 @@ export const accounts = pgTable('accounts', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
-});
+}, (table) => [
+  index('accounts_tenant_id_idx').on(table.tenantId),
+  index('accounts_tenant_type_idx').on(table.tenantId, table.accountType),
+  index('accounts_tenant_code_idx').on(table.tenantId, table.code),
+]);
 
 export const accountsRelations = relations(accounts, ({ one, many }) => ({
   tenant: one(tenants, {
@@ -245,7 +253,7 @@ export const journalEntries = pgTable('journal_entries', {
   reversedById: uuid('reversed_by_id'),
   reversesId: uuid('reverses_id'),
   fiscalPeriodId: uuid('fiscal_period_id'),
-  currencyCode: varchar('currency_code', { length: 3 }).default('USD').notNull(),
+  currencyCode: varchar('currency_code', { length: 3 }).default('INR').notNull(),
   exchangeRate: decimal('exchange_rate', { precision: 20, scale: 8 }).default('1').notNull(),
   totalDebit: decimal('total_debit', { precision: 20, scale: 4 }).default('0').notNull(),
   totalCredit: decimal('total_credit', { precision: 20, scale: 4 }).default('0').notNull(),
@@ -256,7 +264,11 @@ export const journalEntries = pgTable('journal_entries', {
   createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => [
+  index('journal_entries_tenant_id_idx').on(table.tenantId),
+  index('journal_entries_tenant_status_idx').on(table.tenantId, table.status),
+  index('journal_entries_tenant_date_idx').on(table.tenantId, table.date),
+]);
 
 export const journalEntriesRelations = relations(journalEntries, ({ one, many }) => ({
   tenant: one(tenants, {
@@ -298,7 +310,12 @@ export const journalLines = pgTable('journal_lines', {
   taxAmount: decimal('tax_amount', { precision: 20, scale: 4 }),
   reconciled: boolean('reconciled').default(false).notNull(),
   reconciledAt: timestamp('reconciled_at', { withTimezone: true }),
-});
+}, (table) => [
+  index('journal_lines_tenant_id_idx').on(table.tenantId),
+  index('journal_lines_entry_id_idx').on(table.journalEntryId),
+  index('journal_lines_account_id_idx').on(table.accountId),
+  index('journal_lines_tenant_account_idx').on(table.tenantId, table.accountId),
+]);
 
 export const journalLinesRelations = relations(journalLines, ({ one }) => ({
   journalEntry: one(journalEntries, {
@@ -325,7 +342,7 @@ export const invoices = pgTable('invoices', {
   issueDate: date('issue_date').notNull(),
   dueDate: date('due_date').notNull(),
   paymentTerms: paymentTermsEnum('payment_terms').default('net_30'),
-  currencyCode: varchar('currency_code', { length: 3 }).default('USD').notNull(),
+  currencyCode: varchar('currency_code', { length: 3 }).default('INR').notNull(),
   exchangeRate: decimal('exchange_rate', { precision: 20, scale: 8 }).default('1').notNull(),
   subtotal: decimal('subtotal', { precision: 20, scale: 4 }).default('0').notNull(),
   discountType: discountTypeEnum('discount_type'),
@@ -342,11 +359,18 @@ export const invoices = pgTable('invoices', {
   recurring: boolean('recurring').default(false).notNull(),
   journalEntryId: uuid('journal_entry_id'),
   creditNoteForId: uuid('credit_note_for_id'),
+  salesOrderId: uuid('sales_order_id'),
+  projectId: uuid('project_id'),
   createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
-});
+}, (table) => [
+  index('invoices_tenant_id_idx').on(table.tenantId),
+  index('invoices_tenant_status_idx').on(table.tenantId, table.status),
+  index('invoices_tenant_due_date_idx').on(table.tenantId, table.dueDate),
+  index('invoices_customer_id_idx').on(table.customerId),
+]);
 
 export const invoicesRelations = relations(invoices, ({ one, many }) => ({
   tenant: one(tenants, {
@@ -384,6 +408,13 @@ export const invoiceLines = pgTable('invoice_lines', {
   amount: decimal('amount', { precision: 20, scale: 4 }).default('0').notNull(),
   taxRateId: uuid('tax_rate_id'),
   taxAmount: decimal('tax_amount', { precision: 20, scale: 4 }).default('0').notNull(),
+  hsnCode: varchar('hsn_code', { length: 20 }),
+  cgstRate: decimal('cgst_rate', { precision: 8, scale: 4 }).default('0').notNull(),
+  sgstRate: decimal('sgst_rate', { precision: 8, scale: 4 }).default('0').notNull(),
+  igstRate: decimal('igst_rate', { precision: 8, scale: 4 }).default('0').notNull(),
+  cgstAmount: decimal('cgst_amount', { precision: 20, scale: 4 }).default('0').notNull(),
+  sgstAmount: decimal('sgst_amount', { precision: 20, scale: 4 }).default('0').notNull(),
+  igstAmount: decimal('igst_amount', { precision: 20, scale: 4 }).default('0').notNull(),
   accountId: uuid('account_id').references(() => accounts.id, { onDelete: 'set null' }),
   sortOrder: integer('sort_order').default(0).notNull(),
 });
@@ -468,7 +499,7 @@ export const payments = pgTable('payments', {
   paymentNumber: varchar('payment_number', { length: 50 }).notNull(),
   date: date('date').notNull(),
   amount: decimal('amount', { precision: 20, scale: 4 }).notNull(),
-  currencyCode: varchar('currency_code', { length: 3 }).default('USD').notNull(),
+  currencyCode: varchar('currency_code', { length: 3 }).default('INR').notNull(),
   exchangeRate: decimal('exchange_rate', { precision: 20, scale: 8 }).default('1').notNull(),
   paymentMethod: paymentMethodEnum('payment_method').notNull(),
   reference: varchar('reference', { length: 255 }),
@@ -482,7 +513,11 @@ export const payments = pgTable('payments', {
   createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => [
+  index('payments_tenant_id_idx').on(table.tenantId),
+  index('payments_tenant_status_idx').on(table.tenantId, table.status),
+  index('payments_tenant_date_idx').on(table.tenantId, table.date),
+]);
 
 export const bills = pgTable('bills', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -498,7 +533,7 @@ export const bills = pgTable('bills', {
   receivedDate: date('received_date'),
   dueDate: date('due_date').notNull(),
   paymentTerms: paymentTermsEnum('payment_terms').default('net_30'),
-  currencyCode: varchar('currency_code', { length: 3 }).default('USD').notNull(),
+  currencyCode: varchar('currency_code', { length: 3 }).default('INR').notNull(),
   exchangeRate: decimal('exchange_rate', { precision: 20, scale: 8 }).default('1').notNull(),
   subtotal: decimal('subtotal', { precision: 20, scale: 4 }).default('0').notNull(),
   taxAmount: decimal('tax_amount', { precision: 20, scale: 4 }).default('0').notNull(),
@@ -517,6 +552,36 @@ export const bills = pgTable('bills', {
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
 });
 
+// ─── Bill Lines ────────────────────────────────────────────────────────────────
+
+export const billLines = pgTable('bill_lines', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  billId: uuid('bill_id')
+    .references(() => bills.id, { onDelete: 'cascade' })
+    .notNull(),
+  lineNumber: integer('line_number').notNull(),
+  itemId: uuid('item_id'),
+  purchaseOrderLineId: uuid('purchase_order_line_id'),
+  description: text('description'),
+  quantity: decimal('quantity', { precision: 20, scale: 4 }).default('1').notNull(),
+  unitPrice: decimal('unit_price', { precision: 20, scale: 4 }).default('0').notNull(),
+  discountType: discountTypeEnum('discount_type'),
+  discountValue: decimal('discount_value', { precision: 20, scale: 4 }).default('0'),
+  taxAmount: decimal('tax_amount', { precision: 20, scale: 4 }).default('0').notNull(),
+  lineTotal: decimal('line_total', { precision: 20, scale: 4 }).default('0').notNull(),
+  accountId: uuid('account_id'),
+  hsnCode: varchar('hsn_code', { length: 20 }),
+  cgstRate: decimal('cgst_rate', { precision: 8, scale: 4 }).default('0'),
+  sgstRate: decimal('sgst_rate', { precision: 8, scale: 4 }).default('0'),
+  igstRate: decimal('igst_rate', { precision: 8, scale: 4 }).default('0'),
+  cgstAmount: decimal('cgst_amount', { precision: 20, scale: 4 }).default('0'),
+  sgstAmount: decimal('sgst_amount', { precision: 20, scale: 4 }).default('0'),
+  igstAmount: decimal('igst_amount', { precision: 20, scale: 4 }).default('0'),
+});
+
+export type BillLine = typeof billLines.$inferSelect;
+export type NewBillLine = typeof billLines.$inferInsert;
+
 export const bankAccounts = pgTable('bank_accounts', {
   id: uuid('id').defaultRandom().primaryKey(),
   tenantId: uuid('tenant_id')
@@ -528,7 +593,7 @@ export const bankAccounts = pgTable('bank_accounts', {
     .notNull(),
   bankName: varchar('bank_name', { length: 255 }),
   accountNumberLast4: varchar('account_number_last4', { length: 4 }),
-  currencyCode: varchar('currency_code', { length: 3 }).default('USD').notNull(),
+  currencyCode: varchar('currency_code', { length: 3 }).default('INR').notNull(),
   currentBalance: decimal('current_balance', { precision: 20, scale: 4 }).default('0').notNull(),
   isDefault: boolean('is_default').default(false).notNull(),
   isActive: boolean('is_active').default(true).notNull(),
@@ -559,8 +624,194 @@ export const bankTransactions = pgTable('bank_transactions', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
+// ─── Payment Allocations ──────────────────────────────────────────────────────
+
+export const paymentAllocationDocTypeEnum = pgEnum('payment_allocation_doc_type', [
+  'invoice',
+  'bill',
+  'credit_note',
+  'debit_note',
+]);
+
+export const paymentAllocations = pgTable('payment_allocations', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: uuid('tenant_id')
+    .references(() => tenants.id, { onDelete: 'cascade' })
+    .notNull(),
+  paymentId: uuid('payment_id')
+    .references(() => payments.id, { onDelete: 'cascade' })
+    .notNull(),
+  documentType: paymentAllocationDocTypeEnum('document_type').notNull(),
+  documentId: uuid('document_id').notNull(),
+  amount: decimal('amount', { precision: 20, scale: 4 }).notNull(),
+  allocatedAt: timestamp('allocated_at', { withTimezone: true }).defaultNow().notNull(),
+  createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+});
+
+export const paymentAllocationsRelations = relations(paymentAllocations, ({ one }) => ({
+  tenant: one(tenants, {
+    fields: [paymentAllocations.tenantId],
+    references: [tenants.id],
+  }),
+  payment: one(payments, {
+    fields: [paymentAllocations.paymentId],
+    references: [payments.id],
+  }),
+}));
+
+// ─── Budgets ───────────────────────────────────────────
+
+export const budgetStatusEnum = pgEnum('budget_status', [
+  'draft',
+  'active',
+  'closed',
+]);
+
+export const budgets = pgTable('budgets', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: uuid('tenant_id')
+    .references(() => tenants.id, { onDelete: 'cascade' })
+    .notNull(),
+  name: varchar('name', { length: 255 }).notNull(),
+  fiscalYear: varchar('fiscal_year', { length: 10 }).notNull(),
+  fromDate: date('from_date').notNull(),
+  toDate: date('to_date').notNull(),
+  status: budgetStatusEnum('status').default('draft').notNull(),
+  totalBudgeted: decimal('total_budgeted', { precision: 20, scale: 4 }).default('0').notNull(),
+  totalActual: decimal('total_actual', { precision: 20, scale: 4 }).default('0').notNull(),
+  notes: text('notes'),
+  createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+});
+
+export const budgetsRelations = relations(budgets, ({ one, many }) => ({
+  tenant: one(tenants, {
+    fields: [budgets.tenantId],
+    references: [tenants.id],
+  }),
+  creator: one(users, {
+    fields: [budgets.createdBy],
+    references: [users.id],
+  }),
+  lines: many(budgetLines),
+}));
+
+export const budgetLines = pgTable('budget_lines', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  budgetId: uuid('budget_id')
+    .references(() => budgets.id, { onDelete: 'cascade' })
+    .notNull(),
+  accountId: uuid('account_id')
+    .references(() => accounts.id, { onDelete: 'restrict' })
+    .notNull(),
+  budgetedAmount: decimal('budgeted_amount', { precision: 20, scale: 4 }).notNull(),
+  actualAmount: decimal('actual_amount', { precision: 20, scale: 4 }).default('0').notNull(),
+  month: integer('month'),
+  notes: text('notes'),
+});
+
+export const budgetLinesRelations = relations(budgetLines, ({ one }) => ({
+  budget: one(budgets, {
+    fields: [budgetLines.budgetId],
+    references: [budgets.id],
+  }),
+  account: one(accounts, {
+    fields: [budgetLines.accountId],
+    references: [accounts.id],
+  }),
+}));
+
+// ─── TDS (Tax Deducted at Source) ────────────────────────
+
+export const tdsSections = pgTable('tds_sections', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: uuid('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }).notNull(),
+  section: varchar('section', { length: 10 }).notNull(),
+  description: varchar('description', { length: 255 }).notNull(),
+  rateIndividual: decimal('rate_individual', { precision: 8, scale: 4 }).notNull(),
+  rateCompany: decimal('rate_company', { precision: 8, scale: 4 }).notNull(),
+  thresholdLimit: decimal('threshold_limit', { precision: 20, scale: 4 }).default('0').notNull(),
+  thresholdPeriod: tdsThresholdPeriodEnum('threshold_period').default('annual').notNull(),
+  isActive: boolean('is_active').default(true).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('tds_sections_tenant_id_idx').on(table.tenantId),
+  index('tds_sections_tenant_section_idx').on(table.tenantId, table.section),
+]);
+
+export const tdsSectionsRelations = relations(tdsSections, ({ one }) => ({
+  tenant: one(tenants, {
+    fields: [tdsSections.tenantId],
+    references: [tenants.id],
+  }),
+}));
+
+export const tdsDeductions = pgTable('tds_deductions', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: uuid('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }).notNull(),
+  billId: uuid('bill_id').references(() => bills.id, { onDelete: 'cascade' }).notNull(),
+  supplierId: uuid('supplier_id').notNull(),
+  tdsSectionId: uuid('tds_section_id').notNull(),
+  grossAmount: decimal('gross_amount', { precision: 20, scale: 4 }).notNull(),
+  tdsRate: decimal('tds_rate', { precision: 8, scale: 4 }).notNull(),
+  tdsAmount: decimal('tds_amount', { precision: 20, scale: 4 }).notNull(),
+  netAmount: decimal('net_amount', { precision: 20, scale: 4 }).notNull(),
+  deductionDate: date('deduction_date').notNull(),
+  fiscalYear: varchar('fiscal_year', { length: 9 }).notNull(),
+  status: tdsDeductionStatusEnum('status').default('pending').notNull(),
+  certificateNumber: varchar('certificate_number', { length: 50 }),
+  depositDate: date('deposit_date'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('tds_deductions_tenant_id_idx').on(table.tenantId),
+  index('tds_deductions_bill_id_idx').on(table.billId),
+  index('tds_deductions_supplier_fy_idx').on(table.tenantId, table.supplierId, table.fiscalYear),
+]);
+
+export const tdsDeductionsRelations = relations(tdsDeductions, ({ one }) => ({
+  tenant: one(tenants, {
+    fields: [tdsDeductions.tenantId],
+    references: [tenants.id],
+  }),
+  bill: one(bills, {
+    fields: [tdsDeductions.billId],
+    references: [bills.id],
+  }),
+  tdsSection: one(tdsSections, {
+    fields: [tdsDeductions.tdsSectionId],
+    references: [tdsSections.id],
+  }),
+}));
+
+export const vendorTdsLedger = pgTable('vendor_tds_ledger', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: uuid('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }).notNull(),
+  supplierId: uuid('supplier_id').notNull(),
+  fiscalYear: varchar('fiscal_year', { length: 9 }).notNull(),
+  cumulativePurchases: decimal('cumulative_purchases', { precision: 20, scale: 4 }).default('0').notNull(),
+  cumulativeTds: decimal('cumulative_tds', { precision: 20, scale: 4 }).default('0').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('vendor_tds_ledger_tenant_supplier_fy_idx').on(table.tenantId, table.supplierId, table.fiscalYear),
+]);
+
+export const vendorTdsLedgerRelations = relations(vendorTdsLedger, ({ one }) => ({
+  tenant: one(tenants, {
+    fields: [vendorTdsLedger.tenantId],
+    references: [tenants.id],
+  }),
+}));
+
 // ─── Type Exports ───────────────────────────────────────
 
+export type Budget = typeof budgets.$inferSelect;
+export type NewBudget = typeof budgets.$inferInsert;
+export type BudgetLine = typeof budgetLines.$inferSelect;
+export type NewBudgetLine = typeof budgetLines.$inferInsert;
 export type Account = typeof accounts.$inferSelect;
 export type NewAccount = typeof accounts.$inferInsert;
 export type JournalEntry = typeof journalEntries.$inferSelect;
@@ -583,3 +834,11 @@ export type Bill = typeof bills.$inferSelect;
 export type NewBill = typeof bills.$inferInsert;
 export type BankAccount = typeof bankAccounts.$inferSelect;
 export type BankTransaction = typeof bankTransactions.$inferSelect;
+export type PaymentAllocation = typeof paymentAllocations.$inferSelect;
+export type NewPaymentAllocation = typeof paymentAllocations.$inferInsert;
+export type TdsSection = typeof tdsSections.$inferSelect;
+export type NewTdsSection = typeof tdsSections.$inferInsert;
+export type TdsDeduction = typeof tdsDeductions.$inferSelect;
+export type NewTdsDeduction = typeof tdsDeductions.$inferInsert;
+export type VendorTdsLedger = typeof vendorTdsLedger.$inferSelect;
+export type NewVendorTdsLedger = typeof vendorTdsLedger.$inferInsert;
