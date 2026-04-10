@@ -546,6 +546,10 @@ export const bills = pgTable('bills', {
   attachments: text('attachments').array(),
   aiExtracted: boolean('ai_extracted').default(false).notNull(),
   aiConfidence: decimal('ai_confidence', { precision: 5, scale: 4 }),
+  tdsSectionId: uuid('tds_section_id'),
+  tdsRate: decimal('tds_rate', { precision: 8, scale: 4 }),
+  tdsAmount: decimal('tds_amount', { precision: 20, scale: 4 }).default('0').notNull(),
+  rcmApplicable: boolean('rcm_applicable').default(false).notNull(),
   createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -577,6 +581,9 @@ export const billLines = pgTable('bill_lines', {
   cgstAmount: decimal('cgst_amount', { precision: 20, scale: 4 }).default('0'),
   sgstAmount: decimal('sgst_amount', { precision: 20, scale: 4 }).default('0'),
   igstAmount: decimal('igst_amount', { precision: 20, scale: 4 }).default('0'),
+  rcmApplicable: boolean('rcm_applicable').default(false).notNull(),
+  itcEligible: boolean('itc_eligible').default(true).notNull(),
+  itcBlockReason: varchar('itc_block_reason', { length: 255 }),
 });
 
 export type BillLine = typeof billLines.$inferSelect;

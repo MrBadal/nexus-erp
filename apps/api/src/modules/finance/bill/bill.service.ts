@@ -17,8 +17,11 @@ import {
   purchaseReceiptLines,
   purchaseReceipts,
   suppliers,
+  tdsDeductions,
+  invoices,
 } from '../../../database/schema/index.js';
 import { NumberSeriesService } from '../../shared/number-series.service.js';
+import { TdsService } from '../tds/tds.service.js';
 
 interface CreateBillDto {
   vendorId: string;
@@ -48,6 +51,7 @@ export class BillService {
   constructor(
     @Inject(DATABASE) private readonly db: DrizzleDB,
     private readonly numberSeriesService: NumberSeriesService,
+    private readonly tdsService: TdsService,
   ) {}
 
   async findAll(
@@ -233,8 +237,58 @@ export class BillService {
       matchStatus = await this.performThreeWayMatch(tenantId, bill);
     }
 
-    // Post GL journal: DR Expense/Inventory, CR Accounts Payable
-    const journalEntryId = await this.postBillJournal(tenantId, bill, userId);
+    // B.5: Auto debit note on 3-way mismatch
+    if (matchStatus === 'mismatch' && bill.purchaseOrderId) {
+      const debitNoteAmount = await this.calculateMismatchAmount(tenantId, bill);
+      if (debitNoteAmount > 0) {
+        await this.createAutoDebitNote(tenantId, bill, debitNoteAmount, userId);
+      }
+    }
+
+    // B.2: TDS deduction
+    let tdsAmount = 0;
+    if (bill.vendorId) {
+      const [supplier] = await this.db.select().from(suppliers).where(
+        and(eq(suppliers.id, bill.vendorId), eq(suppliers.tenantId, tenantId))
+      );
+      if (supplier?.tdsApplicable && supplier?.defaultTdsSectionId) {
+        const tdsCalc = await this.tdsService.calculateTds(
+          tenantId, supplier.id, supplier.defaultTdsSectionId,
+          parseFloat(bill.total), supplier.panNumber || undefined
+        );
+        if (tdsCalc.tdsAmount > 0) {
+          tdsAmount = tdsCalc.tdsAmount;
+          // Create TDS deduction record
+          await this.db.insert(tdsDeductions).values({
+            tenantId, billId: bill.id, supplierId: supplier.id,
+            tdsSectionId: supplier.defaultTdsSectionId,
+            grossAmount: bill.total, tdsRate: String(tdsCalc.tdsRate),
+            tdsAmount: String(tdsCalc.tdsAmount), netAmount: String(tdsCalc.netAmount),
+            deductionDate: new Date().toISOString().split('T')[0],
+            fiscalYear: this.getCurrentFiscalYear(),
+          });
+          // Update vendor TDS ledger
+          await this.tdsService.updateVendorTdsLedger(
+            tenantId, supplier.id, this.getCurrentFiscalYear(),
+            String(parseFloat(bill.total)), String(tdsCalc.tdsAmount)
+          );
+          // Update bill with TDS info
+          await this.db.update(bills).set({
+            tdsSectionId: supplier.defaultTdsSectionId,
+            tdsRate: String(tdsCalc.tdsRate),
+            tdsAmount: String(tdsCalc.tdsAmount),
+          }).where(eq(bills.id, bill.id));
+        }
+      }
+    }
+
+    // Post GL journal: DR Expense/Inventory, CR Accounts Payable (with TDS split)
+    const journalEntryId = await this.postBillJournal(tenantId, bill, userId, tdsAmount);
+
+    // B.3: RCM posting
+    if (bill.rcmApplicable && parseFloat(bill.taxAmount) > 0) {
+      await this.postRcmJournal(tenantId, bill, userId);
+    }
 
     // Update bill status
     await this.db
@@ -358,12 +412,20 @@ export class BillService {
   /**
    * Posts GL journal for approved bill:
    * DR Expense or Inventory account (from bill lines)
-   * CR Accounts Payable
+   * CR Accounts Payable (net of TDS if applicable)
+   * CR TDS Payable (if TDS deducted)
    */
   private async postBillJournal(
     tenantId: string,
-    bill: { id: string; billNumber: string; total: string; issueDate: string; lines: { accountId: string | null; lineTotal: string }[] },
+    bill: {
+      id: string;
+      billNumber: string;
+      total: string;
+      issueDate: string;
+      lines: { accountId: string | null; lineTotal: string; taxAmount: string; itcEligible: boolean }[];
+    },
     userId: string,
+    tdsAmount: number = 0,
   ): Promise<string> {
     const amount = parseFloat(bill.total);
 
@@ -403,17 +465,64 @@ export class BillService {
     // Debit: Expense/Inventory for each line (or consolidated)
     const debitAccountId = bill.lines[0]?.accountId || expenseAccount?.id || entry.tenantId;
 
-    await this.db.insert(journalLines).values([
-      {
+    const journalLineValues: {
+      tenantId: string;
+      journalEntryId: string;
+      lineNumber: number;
+      accountId: string;
+      description: string;
+      debitAmount: string;
+      creditAmount: string;
+    }[] = [];
+
+    // Line 1: DR Expense (gross amount)
+    journalLineValues.push({
+      tenantId,
+      journalEntryId: entry.id,
+      lineNumber: 1,
+      accountId: debitAccountId,
+      description: `Bill ${bill.billNumber} - Expense`,
+      debitAmount: amount.toFixed(4),
+      creditAmount: '0',
+    });
+
+    if (tdsAmount > 0) {
+      // TDS split: CR TDS Payable + CR AP (net)
+      const [tdsPayableAccount] = await this.db
+        .select()
+        .from(accounts)
+        .where(and(
+          eq(accounts.tenantId, tenantId),
+          sql`(${accounts.code} = '2300' OR LOWER(${accounts.name}) LIKE '%tds%payable%')`,
+        ))
+        .limit(1);
+
+      const apCreditAmount = amount - tdsAmount;
+
+      // Line 2: CR Accounts Payable (net of TDS)
+      journalLineValues.push({
         tenantId,
         journalEntryId: entry.id,
-        lineNumber: 1,
-        accountId: debitAccountId,
-        description: `Bill ${bill.billNumber} - Expense`,
-        debitAmount: amount.toFixed(4),
-        creditAmount: '0',
-      },
-      {
+        lineNumber: 2,
+        accountId: apAccount?.id || entry.tenantId,
+        description: `Bill ${bill.billNumber} - Accounts Payable (net of TDS)`,
+        debitAmount: '0',
+        creditAmount: apCreditAmount.toFixed(4),
+      });
+
+      // Line 3: CR TDS Payable
+      journalLineValues.push({
+        tenantId,
+        journalEntryId: entry.id,
+        lineNumber: 3,
+        accountId: tdsPayableAccount?.id || apAccount?.id || entry.tenantId,
+        description: `Bill ${bill.billNumber} - TDS Payable`,
+        debitAmount: '0',
+        creditAmount: tdsAmount.toFixed(4),
+      });
+    } else {
+      // No TDS: CR AP for full amount
+      journalLineValues.push({
         tenantId,
         journalEntryId: entry.id,
         lineNumber: 2,
@@ -421,9 +530,209 @@ export class BillService {
         description: `Bill ${bill.billNumber} - Accounts Payable`,
         debitAmount: '0',
         creditAmount: amount.toFixed(4),
-      },
-    ]);
+      });
+    }
+
+    await this.db.insert(journalLines).values(journalLineValues);
+
+    // B.4: ITC split for tax amounts
+    const eligibleTax = bill.lines
+      .filter(l => l.itcEligible !== false)
+      .reduce((sum, l) => sum + parseFloat(l.taxAmount || '0'), 0);
+    const blockedTax = bill.lines
+      .filter(l => l.itcEligible === false)
+      .reduce((sum, l) => sum + parseFloat(l.taxAmount || '0'), 0);
+
+    // If there's blocked ITC, add additional journal lines
+    if (blockedTax > 0) {
+      // Find GST Expense account for blocked ITC
+      const [gstExpenseAccount] = await this.db
+        .select()
+        .from(accounts)
+        .where(and(
+          eq(accounts.tenantId, tenantId),
+          sql`LOWER(${accounts.name}) LIKE '%gst%expense%' OR LOWER(${accounts.name}) LIKE '%blocked%itc%'`,
+        ))
+        .limit(1);
+
+      if (gstExpenseAccount) {
+        const currentLineCount = journalLineValues.length;
+        // DR Blocked ITC Expense
+        await this.db.insert(journalLines).values({
+          tenantId,
+          journalEntryId: entry.id,
+          lineNumber: currentLineCount + 1,
+          accountId: gstExpenseAccount.id,
+          description: `Blocked ITC - Bill ${bill.billNumber}`,
+          debitAmount: blockedTax.toFixed(4),
+          creditAmount: '0',
+        });
+      }
+    }
 
     return entry.id;
+  }
+
+  /**
+   * B.3: Posts RCM (Reverse Charge Mechanism) journal entry
+   * DR Input GST (claimable credit), CR RCM Liability
+   */
+  private async postRcmJournal(
+    tenantId: string,
+    bill: { id: string; billNumber: string; taxAmount: string; issueDate: string },
+    userId: string,
+  ): Promise<void> {
+    const taxAmount = parseFloat(bill.taxAmount);
+
+    // Find Input GST account
+    const [inputGstAccount] = await this.db
+      .select()
+      .from(accounts)
+      .where(and(
+        eq(accounts.tenantId, tenantId),
+        sql`LOWER(${accounts.name}) LIKE '%input%gst%' OR LOWER(${accounts.name}) LIKE '%input%tax%credit%'`,
+      ))
+      .limit(1);
+
+    // Find RCM Liability account
+    const [rcmAccount] = await this.db
+      .select()
+      .from(accounts)
+      .where(and(
+        eq(accounts.tenantId, tenantId),
+        sql`LOWER(${accounts.name}) LIKE '%rcm%' OR LOWER(${accounts.name}) LIKE '%reverse%charge%'`,
+      ))
+      .limit(1);
+
+    if (!inputGstAccount || !rcmAccount) return;
+
+    const entryNumber = await this.numberSeriesService.getNext(tenantId, 'journal_entry');
+
+    const [entry] = await this.db
+      .insert(journalEntries)
+      .values({
+        tenantId,
+        entryNumber,
+        date: bill.issueDate,
+        postedDate: bill.issueDate,
+        reference: `RCM - Bill ${bill.billNumber}`,
+        description: `Reverse Charge Mechanism entry for Bill ${bill.billNumber}`,
+        sourceType: 'bill',
+        sourceId: bill.id,
+        status: 'posted',
+        totalDebit: taxAmount.toFixed(4),
+        totalCredit: taxAmount.toFixed(4),
+        createdBy: userId,
+      })
+      .returning();
+
+    await this.db.insert(journalLines).values([
+      {
+        tenantId,
+        journalEntryId: entry.id,
+        lineNumber: 1,
+        accountId: inputGstAccount.id,
+        description: `RCM Input GST - Bill ${bill.billNumber}`,
+        debitAmount: taxAmount.toFixed(4),
+        creditAmount: '0',
+      },
+      {
+        tenantId,
+        journalEntryId: entry.id,
+        lineNumber: 2,
+        accountId: rcmAccount.id,
+        description: `RCM Liability - Bill ${bill.billNumber}`,
+        debitAmount: '0',
+        creditAmount: taxAmount.toFixed(4),
+      },
+    ]);
+  }
+
+  /**
+   * B.5: Calculate mismatch amount between bill qty and received qty
+   */
+  private async calculateMismatchAmount(
+    tenantId: string,
+    bill: { purchaseOrderId: string | null; lines: { purchaseOrderLineId: string | null; quantity: string; unitPrice: string }[] },
+  ): Promise<number> {
+    if (!bill.purchaseOrderId) return 0;
+
+    let mismatchTotal = 0;
+
+    const receipts = await this.db
+      .select({ id: purchaseReceipts.id })
+      .from(purchaseReceipts)
+      .where(
+        and(
+          eq(purchaseReceipts.purchaseOrderId, bill.purchaseOrderId),
+          eq(purchaseReceipts.tenantId, tenantId),
+          eq(purchaseReceipts.status, 'completed'),
+        ),
+      );
+
+    for (const billLine of bill.lines) {
+      if (!billLine.purchaseOrderLineId) continue;
+
+      let receivedQty = 0;
+      for (const receipt of receipts) {
+        const grnLines = await this.db
+          .select()
+          .from(purchaseReceiptLines)
+          .where(
+            and(
+              eq(purchaseReceiptLines.purchaseReceiptId, receipt.id),
+              eq(purchaseReceiptLines.purchaseOrderLineId, billLine.purchaseOrderLineId),
+            ),
+          );
+        for (const gl of grnLines) {
+          receivedQty += parseFloat(gl.acceptedQty);
+        }
+      }
+
+      const billQty = parseFloat(billLine.quantity);
+      if (billQty > receivedQty) {
+        mismatchTotal += (billQty - receivedQty) * parseFloat(billLine.unitPrice);
+      }
+    }
+
+    return mismatchTotal;
+  }
+
+  /**
+   * B.5: Create auto debit note for quantity mismatch
+   */
+  private async createAutoDebitNote(
+    tenantId: string,
+    bill: { id: string; billNumber: string; vendorId: string | null; issueDate: string },
+    amount: number,
+    userId: string,
+  ): Promise<void> {
+    if (!bill.vendorId) return;
+
+    const invoiceNumber = await this.numberSeriesService.getNext(tenantId, 'debit_note');
+
+    await this.db.insert(invoices).values({
+      tenantId,
+      invoiceNumber,
+      type: 'debit_note',
+      status: 'draft',
+      customerId: bill.vendorId, // Vendor becomes the "customer" for debit note
+      issueDate: new Date().toISOString().split('T')[0],
+      dueDate: new Date().toISOString().split('T')[0],
+      subtotal: amount.toFixed(4),
+      taxAmount: '0',
+      total: amount.toFixed(4),
+      amountPaid: '0',
+      balanceDue: amount.toFixed(4),
+      notes: `Auto-generated debit note for quantity mismatch on Bill ${bill.billNumber}`,
+      createdBy: userId,
+    });
+  }
+
+  private getCurrentFiscalYear(): string {
+    const now = new Date();
+    const month = now.getMonth() + 1;
+    const year = now.getFullYear();
+    return month >= 4 ? `${year}-${year + 1}` : `${year - 1}-${year}`;
   }
 }
