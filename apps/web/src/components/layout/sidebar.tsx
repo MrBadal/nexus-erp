@@ -119,6 +119,26 @@ const navigation: NavItem[] = [
             href: "/finance/reports/balance-sheet",
             icon: BarChart3,
           },
+          {
+            title: "Receivable Aging",
+            href: "/finance/reports/receivable-aging",
+            icon: Users,
+          },
+          {
+            title: "Payable Aging",
+            href: "/finance/reports/payable-aging",
+            icon: Building2,
+          },
+          {
+            title: "Budget Variance",
+            href: "/finance/reports/budget-variance",
+            icon: ClipboardList,
+          },
+          {
+            title: "TDS Reports",
+            href: "/finance/reports/tds-payment",
+            icon: Receipt,
+          },
         ],
       },
     ],
@@ -167,6 +187,7 @@ const navigation: NavItem[] = [
     title: "Buying",
     icon: Store,
     children: [
+      { title: "Dashboard", href: "/buying/dashboard", icon: BarChart3 },
       { title: "Suppliers", href: "/buying/suppliers", icon: Building2 },
       { title: "Purchase Orders", href: "/buying/purchase-orders", icon: FileCheck },
       { title: "Purchase Receipts", href: "/buying/purchase-receipts", icon: ClipboardList },

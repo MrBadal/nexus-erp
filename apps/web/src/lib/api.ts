@@ -149,6 +149,12 @@ export const endpoints = {
     profitLoss: '/finance/reports/profit-loss',
     balanceSheet: '/finance/reports/balance-sheet',
     cashFlow: '/finance/reports/cash-flow',
+    receivableAging: '/finance/reports/receivable-aging',
+    payableAging: '/finance/reports/payable-aging',
+    budgetVariance: (budgetId: string) => `/finance/reports/budget-variance/${budgetId}`,
+    vendorLedger: (supplierId: string) => `/finance/reports/vendor-ledger/${supplierId}`,
+    tdsPayment: '/finance/reports/tds-payment',
+    tdsReturn: '/finance/reports/tds-return',
   },
   users: {
     list: '/users',
@@ -635,6 +641,7 @@ export const endpoints = {
   // Dashboard
   dashboard: {
     kpis: '/dashboard/kpis',
+    procurement: '/dashboard/procurement',
   },
   // Bank Reconciliation
   bankReconciliation: {
