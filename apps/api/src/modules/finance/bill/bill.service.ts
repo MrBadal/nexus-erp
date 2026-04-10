@@ -3,6 +3,7 @@ import {
   Inject,
   NotFoundException,
   BadRequestException,
+  ConflictException,
 } from '@nestjs/common';
 import { eq, and, desc, isNull, sql } from 'drizzle-orm';
 import { DATABASE, DrizzleDB } from '../../../database/database.module.js';
@@ -116,6 +117,23 @@ export class BillService {
   }
 
   async create(tenantId: string, userId: string, data: CreateBillDto) {
+    // Duplicate bill detection
+    if (data.vendorId && data.vendorInvoiceNumber) {
+      const [existing] = await this.db.select({ id: bills.id, billNumber: bills.billNumber })
+        .from(bills)
+        .where(and(
+          eq(bills.tenantId, tenantId),
+          eq(bills.vendorId, data.vendorId),
+          sql`LOWER(${bills.vendorInvoiceNumber}) = LOWER(${data.vendorInvoiceNumber})`,
+          isNull(bills.deletedAt),
+        ));
+      if (existing) {
+        throw new ConflictException(
+          `Duplicate bill: ${existing.billNumber} already exists for vendor invoice "${data.vendorInvoiceNumber}"`
+        );
+      }
+    }
+
     const billNumber = await this.numberSeriesService.getNext(tenantId, 'bill');
 
     // Calculate totals from lines
