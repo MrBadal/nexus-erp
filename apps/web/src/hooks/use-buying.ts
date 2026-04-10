@@ -1,6 +1,7 @@
 'use client';
 
-import { endpoints } from '@/lib/api';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { endpoints, get, post } from '@/lib/api';
 import { createCrudHooks, createStatusActionHook, type CrudEndpoints } from './create-crud-hooks';
 
 // ── Supplier ──────────────────────────────────────────────
@@ -105,6 +106,12 @@ export interface PurchaseOrder {
   notes: string | null;
   createdAt: string;
   updatedAt: string;
+  version: number;
+  amendedFromId: string | null;
+  amendmentReason: string | null;
+  advanceAmount: string;
+  advancePaid: string;
+  isPendingApproval: boolean;
   lines?: PurchaseOrderLine[];
 }
 
@@ -142,6 +149,36 @@ export const useCancelPO = createStatusActionHook<PurchaseOrder>(
   'cancel',
   endpoints.purchaseOrders.cancel,
 );
+
+export function useAmendPO() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      post<PurchaseOrder>(`/buying/purchase-orders/${id}/amend`, { reason }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchaseOrders'] });
+    },
+  });
+}
+
+export function useRecordAdvance() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, amount }: { id: string; amount: string }) =>
+      post<PurchaseOrder>(`/buying/purchase-orders/${id}/advance`, { amount }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchaseOrders'] });
+    },
+  });
+}
+
+export function usePOAmendmentHistory(id: string) {
+  return useQuery({
+    queryKey: ['purchaseOrders', id, 'amendments'],
+    queryFn: () => get<Array<{ id: string; version: number; fieldName: string; oldValue: string; newValue: string; changedAt: string }>>(`/buying/purchase-orders/${id}/amendments`),
+    enabled: !!id,
+  });
+}
 
 // ── Purchase Receipt ──────────────────────────────────────
 
@@ -311,6 +348,7 @@ export interface MaterialRequest {
   approvedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  isPendingApproval: boolean;
   lines?: MaterialRequestLine[];
 }
 
