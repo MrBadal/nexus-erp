@@ -10,12 +10,14 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import * as bcrypt from 'bcryptjs';
+import * as crypto from 'crypto';
 import { eq, and } from 'drizzle-orm';
 import { DATABASE, DrizzleDB } from '../../database/database.module.js';
 import { users, tenants, roles } from '../../database/schema/index.js';
 import { JwtPayload } from '../../common/decorators/current-user.decorator.js';
 import { LoginDto, RefreshTokenDto, ForgotPasswordDto, ResetPasswordDto, VerifyMfaDto } from './dto/login.dto.js';
 import { RegisterDto } from './dto/register.dto.js';
+import { AuditService } from '../audit/audit.service.js';
 
 const SALT_ROUNDS = 12;
 const MAX_LOGIN_ATTEMPTS = 5;
@@ -28,6 +30,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly auditService: AuditService,
   ) {}
 
   async login(loginDto: LoginDto) {
@@ -92,6 +95,13 @@ export class AuthService {
         .set(updateData)
         .where(eq(users.id, user.id));
 
+      await this.auditService.logSecurityEvent({
+        tenantId: tenant.id,
+        userId: user.id,
+        eventType: 'login_failed',
+        details: { email: loginDto.email },
+      });
+
       throw new UnauthorizedException('Invalid credentials');
     }
 
@@ -140,6 +150,12 @@ export class AuthService {
       permissions: userPermissions,
       firstName: user.firstName,
       lastName: user.lastName,
+    });
+
+    await this.auditService.logSecurityEvent({
+      tenantId: tenant.id,
+      userId: user.id,
+      eventType: 'login_success',
     });
 
     this.eventEmitter.emit('auth.login', {
@@ -347,6 +363,21 @@ export class AuthService {
         throw new BadRequestException('Invalid reset token');
       }
 
+      // Token single-use: reject if user password has changed since the token was issued.
+      // passwordChangedAt >= iat means this token (or an older one) has already been used.
+      const [currentUser] = await this.db
+        .select({ passwordChangedAt: users.passwordChangedAt })
+        .from(users)
+        .where(eq(users.id, payload.sub))
+        .limit(1);
+
+      if (currentUser?.passwordChangedAt && payload.iat) {
+        const tokenIssuedAt = payload.iat * 1000;
+        if (currentUser.passwordChangedAt.getTime() >= tokenIssuedAt) {
+          throw new BadRequestException('Reset token has already been used');
+        }
+      }
+
       const passwordHash = await bcrypt.hash(resetPasswordDto.newPassword, SALT_ROUNDS);
 
       await this.db
@@ -359,6 +390,12 @@ export class AuthService {
           status: 'active',
         })
         .where(eq(users.id, payload.sub));
+
+      await this.auditService.logSecurityEvent({
+        tenantId: payload.tenantId,
+        userId: payload.sub,
+        eventType: 'password_change',
+      });
 
       return { message: 'Password has been reset successfully' };
     } catch (error) {
@@ -386,9 +423,18 @@ export class AuthService {
         throw new UnauthorizedException('MFA not configured');
       }
 
-      // TODO: Implement TOTP verification with user.mfaSecret
-      // For now, placeholder validation
-      if (!verifyMfaDto.code || verifyMfaDto.code.length !== 6) {
+      // RFC 6238 TOTP verification with ±1 window tolerance
+      if (!verifyMfaDto.code || !/^\d{6}$/.test(verifyMfaDto.code)) {
+        throw new UnauthorizedException('Invalid MFA code');
+      }
+
+      if (!this.verifyTotp(user.mfaSecret, verifyMfaDto.code)) {
+        await this.auditService.logSecurityEvent({
+          tenantId: user.tenantId,
+          userId: user.id,
+          eventType: 'login_failed',
+          details: { reason: 'invalid_mfa_code' },
+        });
         throw new UnauthorizedException('Invalid MFA code');
       }
 
@@ -427,6 +473,101 @@ export class AuthService {
       if (error instanceof UnauthorizedException) throw error;
       throw new UnauthorizedException('Invalid or expired MFA token');
     }
+  }
+
+  /**
+   * Generate a new base32 TOTP secret and corresponding otpauth:// URL.
+   * Caller persists the secret on the user row and renders the URL as a QR.
+   */
+  async enableMfa(userId: string, tenantId: string): Promise<{ secret: string; otpauthUrl: string }> {
+    const [user] = await this.db
+      .select()
+      .from(users)
+      .where(and(eq(users.id, userId), eq(users.tenantId, tenantId)))
+      .limit(1);
+
+    if (!user) throw new NotFoundException('User not found');
+
+    const [tenant] = await this.db
+      .select()
+      .from(tenants)
+      .where(eq(tenants.id, tenantId))
+      .limit(1);
+
+    const secret = this.generateBase32Secret(20); // 160 bits
+    const issuer = encodeURIComponent(`NexusERP (${tenant?.slug || tenant?.name || 'app'})`);
+    const label = encodeURIComponent(user.email);
+    const otpauthUrl = `otpauth://totp/${issuer}:${label}?secret=${secret}&issuer=${issuer}&algorithm=SHA1&digits=6&period=30`;
+
+    await this.db
+      .update(users)
+      .set({ mfaSecret: secret, updatedAt: new Date() })
+      .where(eq(users.id, userId));
+
+    return { secret, otpauthUrl };
+  }
+
+  /** Generate a cryptographically random base32 secret of n bytes. */
+  private generateBase32Secret(bytes: number): string {
+    const buf = crypto.randomBytes(bytes);
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+    let bits = 0;
+    let value = 0;
+    let out = '';
+    for (const byte of buf) {
+      value = (value << 8) | byte;
+      bits += 8;
+      while (bits >= 5) {
+        out += alphabet[(value >>> (bits - 5)) & 31];
+        bits -= 5;
+      }
+    }
+    if (bits > 0) out += alphabet[(value << (5 - bits)) & 31];
+    return out;
+  }
+
+  /** Verify a 6-digit TOTP code against a base32 secret (RFC 6238, 30s step, ±1 window). */
+  private verifyTotp(base32Secret: string, code: string): boolean {
+    const key = this.base32Decode(base32Secret);
+    const counter = Math.floor(Date.now() / 1000 / 30);
+    for (let offset = -1; offset <= 1; offset++) {
+      if (this.hotp(key, counter + offset) === code) return true;
+    }
+    return false;
+  }
+
+  /** HOTP (RFC 4226) — 6-digit dynamic truncation. */
+  private hotp(key: Buffer, counter: number): string {
+    const buf = Buffer.alloc(8);
+    buf.writeBigUInt64BE(BigInt(counter));
+    const hmac = crypto.createHmac('sha1', key).update(buf).digest();
+    const off = hmac[hmac.length - 1] & 0x0f;
+    const bin =
+      ((hmac[off] & 0x7f) << 24) |
+      ((hmac[off + 1] & 0xff) << 16) |
+      ((hmac[off + 2] & 0xff) << 8) |
+      (hmac[off + 3] & 0xff);
+    return (bin % 1_000_000).toString().padStart(6, '0');
+  }
+
+  /** Decode RFC 4648 base32 (uppercase, no padding required). */
+  private base32Decode(input: string): Buffer {
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+    const cleaned = input.replace(/=+$/, '').toUpperCase();
+    let bits = 0;
+    let value = 0;
+    const bytes: number[] = [];
+    for (const char of cleaned) {
+      const idx = alphabet.indexOf(char);
+      if (idx === -1) continue;
+      value = (value << 5) | idx;
+      bits += 5;
+      if (bits >= 8) {
+        bytes.push((value >>> (bits - 8)) & 0xff);
+        bits -= 8;
+      }
+    }
+    return Buffer.from(bytes);
   }
 
   private async generateTokens(payload: JwtPayload) {
