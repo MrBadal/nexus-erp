@@ -23,6 +23,8 @@ import {
 } from '../../../database/schema/index.js';
 import { NumberSeriesService } from '../../shared/number-series.service.js';
 import { TdsService } from '../tds/tds.service.js';
+import { AuditService } from '../../audit/audit.service.js';
+import { ACCOUNT_CODES } from '../../../common/account-codes.constants.js';
 
 interface CreateBillDto {
   vendorId: string;
@@ -53,6 +55,7 @@ export class BillService {
     @Inject(DATABASE) private readonly db: DrizzleDB,
     private readonly numberSeriesService: NumberSeriesService,
     private readonly tdsService: TdsService,
+    private readonly auditService: AuditService,
   ) {}
 
   async findAll(
@@ -238,6 +241,15 @@ export class BillService {
       );
     }
 
+    await this.auditService.logAction({
+      tenantId,
+      userId,
+      action: 'create',
+      entityType: 'bill',
+      entityId: bill.id,
+      changes: { after: { billNumber, total: total.toFixed(4) } },
+    });
+
     return this.findById(tenantId, bill.id);
   }
 
@@ -319,6 +331,15 @@ export class BillService {
       })
       .where(eq(bills.id, id));
 
+    await this.auditService.logAction({
+      tenantId,
+      userId,
+      action: 'approve',
+      entityType: 'bill',
+      entityId: id,
+      changes: { status: 'approved', matchStatus, billNumber: bill.billNumber },
+    });
+
     return this.findById(tenantId, id);
   }
 
@@ -345,6 +366,14 @@ export class BillService {
       .update(bills)
       .set({ status: 'void', updatedAt: new Date() })
       .where(eq(bills.id, id));
+
+    await this.auditService.logAction({
+      tenantId,
+      action: 'void',
+      entityType: 'bill',
+      entityId: id,
+      changes: { status: 'void', billNumber: bill.billNumber },
+    });
 
     return this.findById(tenantId, id);
   }
@@ -451,7 +480,7 @@ export class BillService {
     const [apAccount] = await this.db
       .select()
       .from(accounts)
-      .where(and(eq(accounts.tenantId, tenantId), eq(accounts.code, '2100')))
+      .where(and(eq(accounts.tenantId, tenantId), eq(accounts.code, ACCOUNT_CODES.AP)))
       .limit(1);
 
     // Find default expense account
@@ -511,7 +540,8 @@ export class BillService {
         .from(accounts)
         .where(and(
           eq(accounts.tenantId, tenantId),
-          sql`(${accounts.code} = '2300' OR LOWER(${accounts.name}) LIKE '%tds%payable%')`,
+          sql`${accounts.code} = ${ACCOUNT_CODES.TDS_PAYABLE}
+              OR LOWER(${accounts.name}) LIKE '%tds%payable%'`,
         ))
         .limit(1);
 
@@ -569,7 +599,9 @@ export class BillService {
         .from(accounts)
         .where(and(
           eq(accounts.tenantId, tenantId),
-          sql`LOWER(${accounts.name}) LIKE '%gst%expense%' OR LOWER(${accounts.name}) LIKE '%blocked%itc%'`,
+          sql`${accounts.code} = ${ACCOUNT_CODES.BLOCKED_ITC_EXPENSE}
+              OR LOWER(${accounts.name}) LIKE '%gst%expense%'
+              OR LOWER(${accounts.name}) LIKE '%blocked%itc%'`,
         ))
         .limit(1);
 
@@ -602,23 +634,27 @@ export class BillService {
   ): Promise<void> {
     const taxAmount = parseFloat(bill.taxAmount);
 
-    // Find Input GST account
+    // Find Input GST account by canonical code, with name-pattern fallback
     const [inputGstAccount] = await this.db
       .select()
       .from(accounts)
       .where(and(
         eq(accounts.tenantId, tenantId),
-        sql`LOWER(${accounts.name}) LIKE '%input%gst%' OR LOWER(${accounts.name}) LIKE '%input%tax%credit%'`,
+        sql`${accounts.code} = ${ACCOUNT_CODES.INPUT_GST}
+            OR LOWER(${accounts.name}) LIKE '%input%gst%'
+            OR LOWER(${accounts.name}) LIKE '%input%tax%credit%'`,
       ))
       .limit(1);
 
-    // Find RCM Liability account
+    // Find RCM Liability account by canonical code, with name-pattern fallback
     const [rcmAccount] = await this.db
       .select()
       .from(accounts)
       .where(and(
         eq(accounts.tenantId, tenantId),
-        sql`LOWER(${accounts.name}) LIKE '%rcm%' OR LOWER(${accounts.name}) LIKE '%reverse%charge%'`,
+        sql`${accounts.code} = ${ACCOUNT_CODES.RCM_LIABILITY}
+            OR LOWER(${accounts.name}) LIKE '%rcm%'
+            OR LOWER(${accounts.name}) LIKE '%reverse%charge%'`,
       ))
       .limit(1);
 
