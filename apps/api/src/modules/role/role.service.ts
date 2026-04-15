@@ -8,10 +8,14 @@ import {
 import { eq, and } from 'drizzle-orm';
 import { DATABASE, DrizzleDB } from '../../database/database.module.js';
 import { roles, type NewRole } from '../../database/schema/index.js';
+import { AuditService } from '../audit/audit.service.js';
 
 @Injectable()
 export class RoleService {
-  constructor(@Inject(DATABASE) private readonly db: DrizzleDB) {}
+  constructor(
+    @Inject(DATABASE) private readonly db: DrizzleDB,
+    private readonly auditService: AuditService,
+  ) {}
 
   async findAll(tenantId: string) {
     return this.db
@@ -43,6 +47,7 @@ export class RoleService {
       hierarchyLevel?: number;
       permissions: string[];
     },
+    userId?: string,
   ) {
     // Check slug uniqueness within tenant
     const [existing] = await this.db
@@ -68,6 +73,15 @@ export class RoleService {
       })
       .returning();
 
+    await this.auditService.logAction({
+      tenantId,
+      userId,
+      action: 'create',
+      entityType: 'role',
+      entityId: role.id,
+      changes: { before: null, after: role },
+    });
+
     return role;
   }
 
@@ -81,6 +95,7 @@ export class RoleService {
       hierarchyLevel: number;
       permissions: string[];
     }>,
+    userId?: string,
   ) {
     const existing = await this.findById(tenantId, id);
 
@@ -110,10 +125,48 @@ export class RoleService {
       .where(and(eq(roles.id, id), eq(roles.tenantId, tenantId)))
       .returning();
 
+    // Detect permission grant/revoke if permissions changed
+    if (data.permissions) {
+      const beforePerms = (existing.permissions as string[] | null) || [];
+      const afterPerms = data.permissions;
+      const granted = afterPerms.filter((p) => !beforePerms.includes(p));
+      const revoked = beforePerms.filter((p) => !afterPerms.includes(p));
+
+      for (const perm of granted) {
+        await this.auditService.logAction({
+          tenantId,
+          userId,
+          action: 'grant',
+          entityType: 'permission',
+          entityId: id,
+          changes: { before: null, after: { roleId: id, permission: perm } },
+        });
+      }
+      for (const perm of revoked) {
+        await this.auditService.logAction({
+          tenantId,
+          userId,
+          action: 'revoke',
+          entityType: 'permission',
+          entityId: id,
+          changes: { before: { roleId: id, permission: perm }, after: null },
+        });
+      }
+    }
+
+    await this.auditService.logAction({
+      tenantId,
+      userId,
+      action: 'update',
+      entityType: 'role',
+      entityId: id,
+      changes: { before: existing, after: updated },
+    });
+
     return updated;
   }
 
-  async remove(tenantId: string, id: string) {
+  async remove(tenantId: string, id: string, userId?: string) {
     const existing = await this.findById(tenantId, id);
 
     if (existing.isSystem) {
@@ -123,6 +176,15 @@ export class RoleService {
     await this.db
       .delete(roles)
       .where(and(eq(roles.id, id), eq(roles.tenantId, tenantId)));
+
+    await this.auditService.logAction({
+      tenantId,
+      userId,
+      action: 'delete',
+      entityType: 'role',
+      entityId: id,
+      changes: { before: existing, after: null },
+    });
 
     return { message: 'Role deleted successfully' };
   }

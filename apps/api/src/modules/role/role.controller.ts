@@ -16,6 +16,7 @@ import { JwtAuthGuard } from '../../common/guards/auth.guard.js';
 import { PermissionsGuard } from '../../common/guards/permissions.guard.js';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator.js';
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator.js';
+import { CurrentUser, type JwtPayload } from '../../common/decorators/current-user.decorator.js';
 import { UuidValidationPipe } from '../../common/pipes/uuid-validation.pipe.js';
 
 @ApiTags('roles')
@@ -51,9 +52,10 @@ export class RoleController {
   @ApiResponse({ status: 201, description: 'Role created' })
   async create(
     @CurrentTenant() tenantId: string,
+    @CurrentUser() user: JwtPayload,
     @Body() body: any,
   ) {
-    return this.roleService.create(tenantId, body);
+    return this.roleService.create(tenantId, body, user?.sub);
   }
 
   @Put(':id')
@@ -62,10 +64,11 @@ export class RoleController {
   @ApiResponse({ status: 200, description: 'Role updated' })
   async update(
     @CurrentTenant() tenantId: string,
+    @CurrentUser() user: JwtPayload,
     @Param('id', UuidValidationPipe) id: string,
     @Body() body: any,
   ) {
-    return this.roleService.update(tenantId, id, body);
+    return this.roleService.update(tenantId, id, body, user?.sub);
   }
 
   @Delete(':id')
@@ -75,8 +78,9 @@ export class RoleController {
   @ApiResponse({ status: 204, description: 'Role deleted' })
   async remove(
     @CurrentTenant() tenantId: string,
+    @CurrentUser() user: JwtPayload,
     @Param('id', UuidValidationPipe) id: string,
   ) {
-    return this.roleService.remove(tenantId, id);
+    return this.roleService.remove(tenantId, id, user?.sub);
   }
 }
