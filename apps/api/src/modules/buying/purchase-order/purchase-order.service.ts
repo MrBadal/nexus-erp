@@ -17,9 +17,13 @@ import {
   purchaseReceiptLines,
 } from '../../../database/schema/index.js';
 import { NumberSeriesService } from '../../shared/number-series.service.js';
+import { ApprovalWorkflowService } from '../../shared/approval-workflow.service.js';
 import { BudgetService } from '../../finance/budget/budget.service.js';
 import { CreatePurchaseOrderDto } from './dto/create-purchase-order.dto.js';
 import { UpdatePurchaseOrderDto } from './dto/update-purchase-order.dto.js';
+import { AuditService } from '../../audit/audit.service.js';
+
+const APPROVAL_THRESHOLD_INR = 100000;
 
 @Injectable()
 export class PurchaseOrderService {
@@ -27,6 +31,8 @@ export class PurchaseOrderService {
     @Inject(DATABASE) private readonly db: DrizzleDB,
     private readonly numberSeriesService: NumberSeriesService,
     private readonly budgetService: BudgetService,
+    private readonly auditService: AuditService,
+    private readonly approvalService: ApprovalWorkflowService,
   ) {}
 
   async findAll(
@@ -166,6 +172,14 @@ export class PurchaseOrderService {
       );
     }
 
+    await this.auditService.logAction({
+      tenantId,
+      action: 'create',
+      entityType: 'purchase_order',
+      entityId: order.id,
+      changes: { after: { orderNumber, supplierId: data.supplierId, totalAmount: totalAmount.toFixed(4) } },
+    });
+
     return this.findById(tenantId, order.id);
   }
 
@@ -193,6 +207,7 @@ export class PurchaseOrderService {
     tenantId: string,
     id: string,
     newStatus: 'submitted' | 'approved' | 'received' | 'partially_received' | 'cancelled',
+    userId?: string,
   ) {
     const order = await this.findById(tenantId, id);
 
@@ -217,6 +232,42 @@ export class PurchaseOrderService {
       if (!budgetCheck.available) {
         throw new BadRequestException(budgetCheck.message);
       }
+
+      // Route for approval if total exceeds threshold
+      const totalAmt = parseFloat(order.totalAmount);
+      if (totalAmt > APPROVAL_THRESHOLD_INR) {
+        const requester = userId || order.createdBy;
+        if (requester) {
+          try {
+            await this.approvalService.submitForApproval(tenantId, {
+              documentType: 'purchase_order',
+              documentId: order.id,
+              documentNumber: order.orderNumber,
+              requestedBy: requester,
+              amount: order.totalAmount,
+            });
+          } catch (err) {
+            // If no workflow configured, proceed without approval routing
+            if (!(err instanceof BadRequestException)) throw err;
+          }
+        }
+
+        const [updatedPending] = await this.db
+          .update(purchaseOrders)
+          .set({ status: 'submitted', isPendingApproval: true, updatedAt: new Date() })
+          .where(and(eq(purchaseOrders.id, id), eq(purchaseOrders.tenantId, tenantId)))
+          .returning();
+
+        await this.auditService.logAction({
+          tenantId,
+          action: 'update',
+          entityType: 'purchase_order',
+          entityId: id,
+          changes: { from: order.status, to: 'submitted', pendingApproval: true, orderNumber: order.orderNumber },
+        });
+
+        return updatedPending;
+      }
     }
 
     const updateData: Record<string, unknown> = {
@@ -233,6 +284,14 @@ export class PurchaseOrderService {
       .set(updateData)
       .where(and(eq(purchaseOrders.id, id), eq(purchaseOrders.tenantId, tenantId)))
       .returning();
+
+    await this.auditService.logAction({
+      tenantId,
+      action: 'update',
+      entityType: 'purchase_order',
+      entityId: id,
+      changes: { from: order.status, to: newStatus, orderNumber: order.orderNumber },
+    });
 
     return updated;
   }
@@ -477,6 +536,15 @@ export class PurchaseOrderService {
       notes: `Amended to ${newPo.orderNumber}. Reason: ${reason}`,
       updatedAt: new Date(),
     }).where(eq(purchaseOrders.id, id));
+
+    await this.auditService.logAction({
+      tenantId,
+      userId,
+      action: 'update',
+      entityType: 'purchase_order',
+      entityId: newPo.id,
+      changes: { amendedFrom: id, reason, newOrderNumber: newPo.orderNumber },
+    });
 
     return this.findById(tenantId, newPo.id);
   }

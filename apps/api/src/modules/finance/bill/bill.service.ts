@@ -22,9 +22,12 @@ import {
   invoices,
 } from '../../../database/schema/index.js';
 import { NumberSeriesService } from '../../shared/number-series.service.js';
+import { ApprovalWorkflowService } from '../../shared/approval-workflow.service.js';
 import { TdsService } from '../tds/tds.service.js';
 import { AuditService } from '../../audit/audit.service.js';
 import { ACCOUNT_CODES } from '../../../common/account-codes.constants.js';
+
+const BILL_APPROVAL_THRESHOLD_INR = 100000;
 
 interface CreateBillDto {
   vendorId: string;
@@ -56,6 +59,7 @@ export class BillService {
     private readonly numberSeriesService: NumberSeriesService,
     private readonly tdsService: TdsService,
     private readonly auditService: AuditService,
+    private readonly approvalService: ApprovalWorkflowService,
   ) {}
 
   async findAll(
@@ -258,6 +262,31 @@ export class BillService {
 
     if (bill.status !== 'draft' && bill.status !== 'received') {
       throw new BadRequestException('Only draft or received bills can be approved');
+    }
+
+    // If bill requires approval and no request exists yet, route for approval
+    const totalAmt = parseFloat(bill.total);
+    if (totalAmt > BILL_APPROVAL_THRESHOLD_INR) {
+      const existingRequests = await this.approvalService.findRequestsByDocument(
+        tenantId, 'bill', id,
+      );
+      const hasPendingOrCompleted = existingRequests.some(
+        (r) => r.status === 'pending' || r.status === 'approved',
+      );
+      if (!hasPendingOrCompleted) {
+        try {
+          await this.approvalService.submitForApproval(tenantId, {
+            documentType: 'bill',
+            documentId: bill.id,
+            documentNumber: bill.billNumber,
+            requestedBy: userId,
+            amount: bill.total,
+          });
+        } catch (err) {
+          if (!(err instanceof BadRequestException)) throw err;
+        }
+        throw new BadRequestException('Approval requested; wait for approver');
+      }
     }
 
     // Perform 3-way matching if linked to a PO
