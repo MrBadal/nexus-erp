@@ -1651,6 +1651,116 @@ export class IntegrationService {
     }
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // QUALITY: Inspection Rejected → Transfer Rejected Stock to Quarantine Warehouse
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  @OnEvent(EVENTS.INSPECTION_REJECTED)
+  async onInspectionRejected(payload: {
+    inspectionId: string;
+    tenantId: string;
+    itemId: string;
+    quantity: number;
+    sourceWarehouseId: string;
+  }) {
+    this.logger.log(`Quarantining rejected stock from inspection ${payload.inspectionId}`);
+    try {
+      const qty = Number(payload.quantity);
+      if (!qty || qty <= 0) return;
+
+      // Find or create the tenant's QUARANTINE warehouse
+      let [quarantine] = await this.db
+        .select()
+        .from(warehouses)
+        .where(
+          and(
+            eq(warehouses.tenantId, payload.tenantId),
+            eq(warehouses.code, 'QUARANTINE'),
+            isNull(warehouses.deletedAt),
+          ),
+        )
+        .limit(1);
+
+      if (!quarantine) {
+        [quarantine] = await this.db
+          .insert(warehouses)
+          .values({
+            tenantId: payload.tenantId,
+            name: 'Quarantine',
+            code: 'QUARANTINE',
+            isDefault: false,
+            isActive: true,
+          })
+          .returning();
+      }
+
+      if (!quarantine) return;
+
+      // Insert transfer stock movement: source → quarantine
+      await this.db.insert(stockMovements).values({
+        tenantId: payload.tenantId,
+        itemId: payload.itemId,
+        warehouseId: payload.sourceWarehouseId,
+        toWarehouseId: quarantine.id,
+        movementType: 'transfer',
+        quantity: qty.toFixed(4),
+        reference: payload.inspectionId,
+        description: `Quarantine transfer for rejected inspection ${payload.inspectionId}`,
+        sourceType: 'quality_inspection',
+        sourceId: payload.inspectionId,
+      });
+
+      // Decrement source warehouse qty
+      await this.db
+        .update(itemWarehouses)
+        .set({
+          quantity: sql`GREATEST(0, ${itemWarehouses.quantity} - ${qty})`,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(itemWarehouses.tenantId, payload.tenantId),
+            eq(itemWarehouses.itemId, payload.itemId),
+            eq(itemWarehouses.warehouseId, payload.sourceWarehouseId),
+          ),
+        );
+
+      // Upsert into quarantine warehouse
+      const [existingQ] = await this.db
+        .select()
+        .from(itemWarehouses)
+        .where(
+          and(
+            eq(itemWarehouses.tenantId, payload.tenantId),
+            eq(itemWarehouses.itemId, payload.itemId),
+            eq(itemWarehouses.warehouseId, quarantine.id),
+          ),
+        )
+        .limit(1);
+
+      if (existingQ) {
+        await this.db
+          .update(itemWarehouses)
+          .set({
+            quantity: (parseFloat(existingQ.quantity) + qty).toFixed(4),
+            updatedAt: new Date(),
+          })
+          .where(eq(itemWarehouses.id, existingQ.id));
+      } else {
+        await this.db.insert(itemWarehouses).values({
+          tenantId: payload.tenantId,
+          itemId: payload.itemId,
+          warehouseId: quarantine.id,
+          quantity: qty.toFixed(4),
+          reservedQuantity: '0',
+          reorderLevel: 0,
+        });
+      }
+    } catch (err) {
+      this.logger.error(`Failed to quarantine rejected inspection ${payload.inspectionId}: ${err}`);
+    }
+  }
+
   @OnEvent('APPROVAL_REJECTED')
   async onApprovalRejected(payload: { tenantId: string; documentType: string; documentId: string }) {
     this.logger.log(`Approval rejected for ${payload.documentType} ${payload.documentId}`);
