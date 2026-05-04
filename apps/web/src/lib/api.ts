@@ -697,6 +697,29 @@ export const endpoints = {
     update: (id: string) => `/tenants/${id}`,
     settings: (id: string) => `/tenants/${id}/settings`,
   },
+  // ESS (Employee Self-Service)
+  ess: {
+    profile: '/ess/profile',
+    attendance: {
+      today: '/ess/attendance/today',
+      me: '/ess/attendance/me',
+      checkIn: '/ess/attendance/check-in',
+      checkOut: '/ess/attendance/check-out',
+    },
+    leave: {
+      balance: '/ess/leave/balance',
+      applications: '/ess/leave/applications',
+      teamCalendar: '/ess/leave/team-calendar',
+      withdraw: (id: string) => `/ess/leave/applications/${id}/withdraw`,
+    },
+    payroll: {
+      entries: '/ess/payroll/entries',
+      pdf: (id: string) => `/ess/payroll/entries/${id}/pdf`,
+    },
+    expenses: '/ess/expenses',
+    team: '/ess/team',
+    dashboard: '/ess/dashboard',
+  },
 };
 
 export default api;
