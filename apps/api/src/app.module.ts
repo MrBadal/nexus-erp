@@ -13,6 +13,8 @@ import { RoleModule } from './modules/role/role.module.js';
 import { AuditModule } from './modules/audit/audit.module.js';
 import { TenantMiddleware } from './common/middleware/tenant.middleware.js';
 import { FinanceModule } from './modules/finance/finance.module.js';
+import { ShiftModule } from './modules/hr/shift/shift.module.js';
+import { AttendancePolicyModule } from './modules/hr/attendance-policy/attendance-policy.module.js';
 import { OnboardingModule } from './modules/hr/onboarding/onboarding.module.js';
 import { OffboardingModule } from './modules/hr/offboarding/offboarding.module.js';
 import { HrDashboardModule } from './modules/hr/hr-dashboard/hr-dashboard.module.js';
@@ -42,6 +44,8 @@ import { HrDashboardModule } from './modules/hr/hr-dashboard/hr-dashboard.module
     RoleModule,
     AuditModule,
     FinanceModule,
+    ShiftModule,
+    AttendancePolicyModule,
     OnboardingModule,
     OffboardingModule,
     HrDashboardModule,
