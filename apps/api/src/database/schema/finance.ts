@@ -849,3 +849,35 @@ export type TdsDeduction = typeof tdsDeductions.$inferSelect;
 export type NewTdsDeduction = typeof tdsDeductions.$inferInsert;
 export type VendorTdsLedger = typeof vendorTdsLedger.$inferSelect;
 export type NewVendorTdsLedger = typeof vendorTdsLedger.$inferInsert;
+
+// ─── Recurring Invoice Templates ───────────────────────────────────
+export const recurringInvoiceFrequencyEnum = pgEnum('recurring_invoice_frequency', [
+  'weekly',
+  'monthly',
+  'quarterly',
+  'half_yearly',
+  'annually',
+]);
+
+export const recurringInvoiceTemplates = pgTable(
+  'recurring_invoice_templates',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    tenantId: uuid('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }).notNull(),
+    sourceInvoiceId: uuid('source_invoice_id').notNull(),
+    frequency: recurringInvoiceFrequencyEnum('frequency').notNull(),
+    nextRunDate: date('next_run_date').notNull(),
+    endDate: date('end_date'),
+    isActive: boolean('is_active').default(true).notNull(),
+    totalGenerated: integer('total_generated').default(0).notNull(),
+    lastGeneratedAt: timestamp('last_generated_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    index('rec_invoice_tpl_tenant_idx').on(t.tenantId),
+    index('rec_invoice_tpl_next_run_idx').on(t.tenantId, t.nextRunDate),
+  ],
+);
+export type RecurringInvoiceTemplate = typeof recurringInvoiceTemplates.$inferSelect;
+export type NewRecurringInvoiceTemplate = typeof recurringInvoiceTemplates.$inferInsert;

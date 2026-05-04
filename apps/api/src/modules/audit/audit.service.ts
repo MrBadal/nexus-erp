@@ -62,7 +62,7 @@ export class AuditService {
 
   async logAction(data: {
     tenantId: string;
-    userId: string;
+    userId?: string;
     action: string;
     entityType: string;
     entityId?: string;
@@ -73,7 +73,7 @@ export class AuditService {
       .insert(auditLog)
       .values({
         tenantId: data.tenantId,
-        userId: data.userId,
+        userId: data.userId ?? null,
         action: data.action as any,
         entityType: data.entityType,
         entityId: data.entityId || null,
@@ -83,5 +83,42 @@ export class AuditService {
       .returning();
 
     return entry;
+  }
+
+  /**
+   * Log a security-relevant event (login_success, login_failed, password_change,
+   * mfa_enabled, role_change, …). Uses the same audit_log table with action prefixed
+   * to make filtering easy.
+   */
+  async logSecurityEvent(data: {
+    tenantId: string;
+    userId?: string;
+    eventType: string;
+    details?: any;
+  }) {
+    return this.logAction({
+      tenantId: data.tenantId,
+      userId: data.userId,
+      action: `security.${data.eventType}`,
+      entityType: 'security_event',
+      changes: data.details ?? null,
+    });
+  }
+
+  /** List security events for a tenant, optionally filtered by event type. */
+  async getSecurityEvents(tenantId: string, eventType?: string, limit = 100) {
+    const conditions = [
+      eq(auditLog.tenantId, tenantId),
+      sql`${auditLog.action}::text LIKE 'security.%'`,
+    ];
+    if (eventType) {
+      conditions.push(sql`${auditLog.action}::text = ${`security.${eventType}`}`);
+    }
+    return this.db
+      .select()
+      .from(auditLog)
+      .where(and(...conditions))
+      .orderBy(desc(auditLog.createdAt))
+      .limit(limit);
   }
 }

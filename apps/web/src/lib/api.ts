@@ -720,6 +720,65 @@ export const endpoints = {
     team: '/ess/team',
     dashboard: '/ess/dashboard',
   },
+
+  // ─── Settings: tax rates, TDS sections, currencies, fiscal periods ───
+  taxRates: {
+    list: '/finance/tax-rates',
+    get: (id: string) => `/finance/tax-rates/${id}`,
+    create: '/finance/tax-rates',
+    update: (id: string) => `/finance/tax-rates/${id}`,
+    deactivate: (id: string) => `/finance/tax-rates/${id}/deactivate`,
+    seedGst: '/finance/tax-rates/seed-gst',
+  },
+  currencies: {
+    list: '/finance/currencies',
+    get: (id: string) => `/finance/currencies/${id}`,
+    create: '/finance/currencies',
+    update: (id: string) => `/finance/currencies/${id}`,
+    delete: (id: string) => `/finance/currencies/${id}`,
+    rates: '/finance/currencies/exchange-rates',
+    exchangeRates: '/finance/currencies/exchange-rates',
+    addRate: '/finance/currencies/exchange-rates',
+    setExchangeRate: '/finance/currencies/exchange-rates',
+  },
+  fiscalPeriods: {
+    list: '/finance/fiscal-periods',
+    get: (id: string) => `/finance/fiscal-periods/${id}`,
+    create: '/finance/fiscal-periods',
+    update: (id: string) => `/finance/fiscal-periods/${id}`,
+    close: (id: string) => `/finance/fiscal-periods/${id}/close`,
+    reopen: (id: string) => `/finance/fiscal-periods/${id}/reopen`,
+    lock: (id: string) => `/finance/fiscal-periods/${id}/lock`,
+  },
+  recurringInvoices: {
+    list: '/finance/recurring-invoices',
+    get: (id: string) => `/finance/recurring-invoices/${id}`,
+    create: '/finance/recurring-invoices',
+    update: (id: string) => `/finance/recurring-invoices/${id}`,
+    deactivate: (id: string) => `/finance/recurring-invoices/${id}/deactivate`,
+  },
+
+  // ─── Audit / security events / retention ───
+  audit: {
+    list: '/audit',
+    get: (id: string) => `/audit/${id}`,
+  },
+  securityEvents: {
+    list: '/audit/security-events',
+  },
+  retentionPolicies: {
+    list: '/retention/policies',
+    get: (id: string) => `/retention/policies/${id}`,
+    create: '/retention/policies',
+    update: (id: string) => `/retention/policies/${id}`,
+    delete: (id: string) => `/retention/policies/${id}`,
+  },
+  legalHolds: {
+    list: '/retention/legal-holds',
+    get: (id: string) => `/retention/legal-holds/${id}`,
+    create: '/retention/legal-holds',
+    release: (id: string) => `/retention/legal-holds/${id}/release`,
+  },
 };
 
 export default api;
