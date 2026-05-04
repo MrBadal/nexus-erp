@@ -13,6 +13,9 @@ import { RoleModule } from './modules/role/role.module.js';
 import { AuditModule } from './modules/audit/audit.module.js';
 import { TenantMiddleware } from './common/middleware/tenant.middleware.js';
 import { FinanceModule } from './modules/finance/finance.module.js';
+import { OnboardingModule } from './modules/hr/onboarding/onboarding.module.js';
+import { OffboardingModule } from './modules/hr/offboarding/offboarding.module.js';
+import { HrDashboardModule } from './modules/hr/hr-dashboard/hr-dashboard.module.js';
 
 @Module({
   imports: [
@@ -39,6 +42,9 @@ import { FinanceModule } from './modules/finance/finance.module.js';
     RoleModule,
     AuditModule,
     FinanceModule,
+    OnboardingModule,
+    OffboardingModule,
+    HrDashboardModule,
   ],
 })
 export class AppModule implements NestModule {
