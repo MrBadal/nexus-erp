@@ -36,6 +36,10 @@ export const EVENTS = {
   // ── HR → Attendance ──────────────────────────────────────────────────
   LEAVE_APPROVED: 'hr.leave.approved',
 
+  // ── HR → Onboarding / Offboarding ────────────────────
+  EMPLOYEE_CREATED: 'hr.employee.created',
+  EMPLOYEE_EXIT_INITIATED: 'hr.employee.exit_initiated',
+
   // ── Helpdesk → Notifications ─────────────────────────
   TICKET_SLA_BREACHED: 'ticket.sla.breached',
 

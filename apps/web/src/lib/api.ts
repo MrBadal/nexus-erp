@@ -384,6 +384,38 @@ export const endpoints = {
     accept: (id: string) => `/hr/recruitment/offers/${id}/accept`,
     reject: (id: string) => `/hr/recruitment/offers/${id}/reject`,
   },
+  // Onboarding
+  onboardingTemplates: {
+    list: '/hr/onboarding/templates',
+    get: (id: string) => `/hr/onboarding/templates/${id}`,
+    create: '/hr/onboarding/templates',
+    update: (id: string) => `/hr/onboarding/templates/${id}`,
+    delete: (id: string) => `/hr/onboarding/templates/${id}`,
+  },
+  onboardingChecklists: {
+    list: '/hr/onboarding/checklists',
+    get: (id: string) => `/hr/onboarding/checklists/${id}`,
+    create: '/hr/onboarding/checklists',
+    kanban: '/hr/onboarding/checklists/kanban',
+    myTasks: '/hr/onboarding/checklists/my-tasks',
+    updateTaskStatus: (id: string) => `/hr/onboarding/tasks/${id}/status`,
+  },
+  // Offboarding
+  offboardingTemplates: {
+    list: '/hr/offboarding/templates',
+    get: (id: string) => `/hr/offboarding/templates/${id}`,
+    create: '/hr/offboarding/templates',
+    update: (id: string) => `/hr/offboarding/templates/${id}`,
+    delete: (id: string) => `/hr/offboarding/templates/${id}`,
+  },
+  offboardingChecklists: {
+    list: '/hr/offboarding/checklists',
+    get: (id: string) => `/hr/offboarding/checklists/${id}`,
+    create: '/hr/offboarding/checklists',
+    kanban: '/hr/offboarding/checklists/kanban',
+    myTasks: '/hr/offboarding/checklists/my-tasks',
+    updateTaskStatus: (id: string) => `/hr/offboarding/tasks/${id}/status`,
+  },
   importExport: {
     export: (entity: string) => `/settings/import-export/export?entity=${entity}`,
     import: '/settings/import-export/import',
