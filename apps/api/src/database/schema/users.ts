@@ -31,6 +31,9 @@ export const users = pgTable('users', {
   avatarUrl: text('avatar_url'),
   phone: varchar('phone', { length: 20 }),
   roleId: uuid('role_id').references(() => roles.id, { onDelete: 'set null' }),
+  // Bridge to HR. Plain uuid (no .references()) to avoid circular import with employees table.
+  // Foreign key enforced at DB level via migration.
+  employeeId: uuid('employee_id'),
   status: userStatusEnum('status').default('pending_verification').notNull(),
   emailVerifiedAt: timestamp('email_verified_at', { withTimezone: true }),
   mfaEnabled: boolean('mfa_enabled').default(false).notNull(),

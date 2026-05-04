@@ -26,6 +26,10 @@ export interface User {
   fullName: string;
   avatarUrl?: string;
   role: UserRole;
+  /** Backend role slug: 'admin' | 'employee' | 'hr_manager' | 'hr_executive' | 'accountant' | 'viewer' | custom slugs. */
+  roleSlug?: string;
+  /** Linked employee record (set for users created via HR onboarding). Null for admins without an HR profile. */
+  employeeId?: string | null;
   tenantId: string;
   isActive: boolean;
   lastLoginAt?: string;

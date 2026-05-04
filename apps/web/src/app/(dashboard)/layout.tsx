@@ -12,7 +12,7 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
-  const { isAuthenticated, isLoading, initialize } = useAuthStore();
+  const { isAuthenticated, isLoading, initialize, user } = useAuthStore();
 
   React.useEffect(() => {
     initialize();
@@ -21,8 +21,11 @@ export default function DashboardLayout({
   React.useEffect(() => {
     if (!isLoading && !isAuthenticated) {
       router.push("/login");
+    } else if (!isLoading && isAuthenticated && user?.roleSlug === 'employee') {
+      // Employees cannot access internal dashboard — redirect to ESS portal.
+      router.push("/ess");
     }
-  }, [isLoading, isAuthenticated, router]);
+  }, [isLoading, isAuthenticated, user, router]);
 
   if (isLoading) {
     return (

@@ -29,11 +29,22 @@ interface ApiAuthResponse {
     tenantId: string;
     tenantName: string;
     tenantSlug: string;
+    roleSlug?: string;
+    employeeId?: string | null;
   };
 }
 
 function mapAuthResponse(data: ApiAuthResponse) {
   const now = new Date().toISOString();
+  // Map backend role slug to the front-end UserRole union; falls back to 'admin' for legacy.
+  const slug = data.user.roleSlug;
+  const role: "super_admin" | "admin" | "manager" | "accountant" | "user" | "viewer" =
+    slug === 'employee' ? 'user'
+    : slug === 'hr_manager' ? 'manager'
+    : slug === 'hr_executive' ? 'manager'
+    : slug === 'accountant' ? 'accountant'
+    : slug === 'viewer' ? 'viewer'
+    : 'admin';
   return {
     user: {
       id: data.user.id,
@@ -42,7 +53,9 @@ function mapAuthResponse(data: ApiAuthResponse) {
       lastName: data.user.lastName,
       fullName: `${data.user.firstName} ${data.user.lastName}`,
       avatarUrl: data.user.avatarUrl ?? undefined,
-      role: "admin" as const,
+      role,
+      roleSlug: slug,
+      employeeId: data.user.employeeId ?? null,
       tenantId: data.user.tenantId,
       isActive: true,
       lastLoginAt: now,
@@ -58,7 +71,7 @@ function mapAuthResponse(data: ApiAuthResponse) {
       id: data.user.tenantId,
       name: data.user.tenantName,
       slug: data.user.tenantSlug,
-      currency: "USD",
+      currency: "INR",
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       isActive: true,
       createdAt: now,
@@ -86,7 +99,9 @@ export function useAuth() {
       const { data } = await api.post<ApiAuthResponse>(endpoints.auth.login, credentials);
       const mapped = mapAuthResponse(data);
       setAuth(mapped.user, mapped.tokens, mapped.tenant);
-      router.push("/dashboard");
+      // Employee role lands on the self-service portal; everyone else lands on the dashboard.
+      const target = data.user.roleSlug === 'employee' ? '/ess' : '/dashboard';
+      router.push(target);
       return mapped;
     },
     [setAuth, router]

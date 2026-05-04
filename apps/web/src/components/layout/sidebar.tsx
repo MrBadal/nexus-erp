@@ -58,9 +58,12 @@ import {
   HardHat,
   Ruler,
   PackageMinus,
+  Lock,
+  Repeat,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { useAuthStore } from "@/stores/auth.store";
 import {
   Tooltip,
   TooltipContent,
@@ -74,6 +77,21 @@ interface NavItem {
   icon: React.ElementType;
   badge?: number;
   children?: NavItem[];
+  /**
+   * Show this nav group only if the current user has any permission whose
+   * string starts with one of these prefixes (e.g. 'hr:', 'finance:').
+   * If omitted, item is shown to everyone authenticated.
+   * Admins (with permission '*') see everything regardless.
+   */
+  requiredPrefix?: string[];
+}
+
+/** Returns true iff `userPerms` includes the wildcard '*' or any string starting with one of `prefixes`. */
+function hasAnyPrefix(userPerms: string[] | undefined, prefixes?: string[]): boolean {
+  if (!prefixes || prefixes.length === 0) return true;
+  if (!userPerms || userPerms.length === 0) return false;
+  if (userPerms.includes('*')) return true;
+  return userPerms.some((p) => prefixes.some((pre) => p.startsWith(pre)));
 }
 
 const navigation: NavItem[] = [
@@ -85,6 +103,7 @@ const navigation: NavItem[] = [
   {
     title: "Finance",
     icon: Landmark,
+    requiredPrefix: ['finance:', 'reports:'],
     children: [
       { title: "Chart of Accounts", href: "/finance/accounts", icon: BookOpen },
       {
@@ -95,6 +114,7 @@ const navigation: NavItem[] = [
       { title: "Invoices", href: "/finance/invoices", icon: FileText },
       { title: "Payments", href: "/finance/payments", icon: CreditCard },
       { title: "Budgets", href: "/finance/budgets", icon: BarChart3 },
+      { title: "Recurring Invoices", href: "/finance/recurring-invoices", icon: Repeat },
       {
         title: "Reports",
         icon: TrendingUp,
@@ -146,6 +166,7 @@ const navigation: NavItem[] = [
   {
     title: "HR",
     icon: Users,
+    requiredPrefix: ['hr:'],
     children: [
       { title: "Employees", href: "/hr/employees", icon: UserCircle },
       { title: "Departments", href: "/hr/departments", icon: Building2 },
@@ -166,6 +187,7 @@ const navigation: NavItem[] = [
   {
     title: "CRM",
     icon: Handshake,
+    requiredPrefix: ['crm:'],
     children: [
       { title: "Leads", href: "/crm/leads", icon: Phone },
       { title: "Contacts", href: "/crm/contacts", icon: Users },
@@ -176,6 +198,7 @@ const navigation: NavItem[] = [
   {
     title: "Selling",
     icon: ShoppingCart,
+    requiredPrefix: ['selling:'],
     children: [
       { title: "Customers", href: "/selling/customers", icon: Users },
       { title: "Sales Orders", href: "/selling/sales-orders", icon: ClipboardCheck },
@@ -186,6 +209,7 @@ const navigation: NavItem[] = [
   {
     title: "Buying",
     icon: Store,
+    requiredPrefix: ['buying:'],
     children: [
       { title: "Dashboard", href: "/buying/dashboard", icon: BarChart3 },
       { title: "Suppliers", href: "/buying/suppliers", icon: Building2 },
@@ -198,6 +222,7 @@ const navigation: NavItem[] = [
   {
     title: "Inventory",
     icon: Package,
+    requiredPrefix: ['inventory:'],
     children: [
       { title: "Items", href: "/inventory/items", icon: Boxes },
       { title: "Warehouses", href: "/inventory/warehouses", icon: Warehouse },
@@ -208,6 +233,7 @@ const navigation: NavItem[] = [
   {
     title: "Manufacturing",
     icon: Factory,
+    requiredPrefix: ['manufacturing:'],
     children: [
       { title: "BOM", href: "/manufacturing/bom", icon: ClipboardList },
       { title: "Work Orders", href: "/manufacturing/work-orders", icon: Cog },
@@ -217,6 +243,7 @@ const navigation: NavItem[] = [
   {
     title: "Projects",
     icon: FolderKanban,
+    requiredPrefix: ['projects:'],
     children: [
       { title: "All Projects", href: "/projects", icon: FolderKanban },
       { title: "Tasks", href: "/projects/tasks", icon: ListTodo },
@@ -226,6 +253,7 @@ const navigation: NavItem[] = [
   {
     title: "Assets",
     icon: HardDrive,
+    requiredPrefix: ['assets:'],
     children: [
       { title: "Asset List", href: "/assets/list", icon: HardDrive },
       { title: "Categories", href: "/assets/categories", icon: Tag },
@@ -235,6 +263,7 @@ const navigation: NavItem[] = [
   {
     title: "Quality",
     icon: Shield,
+    requiredPrefix: ['quality:'],
     children: [
       { title: "Inspections", href: "/quality/inspections", icon: SearchCheck },
       { title: "Procedures", href: "/quality/procedures", icon: BookOpenCheck },
@@ -244,6 +273,7 @@ const navigation: NavItem[] = [
   {
     title: "Construction",
     icon: HardHat,
+    requiredPrefix: ['construction:'],
     children: [
       { title: "Overview", href: "/construction", icon: HardHat },
       { title: "Contracts", href: "/construction/contracts", icon: FileText },
@@ -258,6 +288,7 @@ const navigation: NavItem[] = [
   {
     title: "Helpdesk",
     icon: LifeBuoy,
+    requiredPrefix: ['helpdesk:'],
     children: [
       { title: "Tickets", href: "/helpdesk/tickets", icon: Ticket },
       { title: "Knowledge Base", href: "/helpdesk/knowledge-base", icon: BookOpenCheck },
@@ -273,9 +304,15 @@ const navigation: NavItem[] = [
       { title: "Organization", href: "/settings/organization", icon: Building2 },
       { title: "Users", href: "/settings/users", icon: Users },
       { title: "Roles", href: "/settings/roles", icon: Settings },
-      { title: "Number Series", href: "/settings/number-series", icon: FileText },
+      { title: "Tax Rates", href: "/settings/tax-rates", icon: Receipt },
       { title: "TDS Sections", href: "/settings/tds-sections", icon: FileText },
+      { title: "Number Series", href: "/settings/number-series", icon: FileText },
+      { title: "Currencies", href: "/settings/currencies", icon: DollarSign },
+      { title: "Fiscal Periods", href: "/settings/fiscal-periods", icon: Calendar },
       { title: "Approval Workflows", href: "/settings/approval-workflows", icon: ClipboardCheck },
+      { title: "Retention Policies", href: "/settings/retention-policies", icon: Shield },
+      { title: "Legal Holds", href: "/settings/legal-holds", icon: Lock },
+      { title: "Security Events", href: "/settings/security-events", icon: AlertTriangle },
       { title: "Import / Export", href: "/settings/import-export", icon: ArrowRightLeft },
     ],
   },
@@ -287,6 +324,20 @@ export function Sidebar() {
   const [expandedGroups, setExpandedGroups] = React.useState<string[]>([
     "Finance",
   ]);
+  // Permission-aware filtering of nav groups. Pulled here (not at module scope) so it re-runs
+  // when the user changes (e.g. login as different role).
+  const userPerms = useAuthStore((s) =>
+    (s.permissions as unknown as Array<{ module?: string; resource?: string; action?: string } | string>).map((p) =>
+      typeof p === 'string' ? p : `${p.module ?? ''}:${p.resource ?? ''}`,
+    ),
+  );
+  const userRoleSlug = useAuthStore((s) => s.user?.roleSlug);
+  // Admin slug or wildcard permission unlocks everything; otherwise filter by requiredPrefix.
+  const isAdmin = userRoleSlug === 'admin' || userPerms.includes('*');
+  const visibleNavItems = React.useMemo(
+    () => (isAdmin ? navigation : navigation.filter((item) => hasAnyPrefix(userPerms, item.requiredPrefix))),
+    [isAdmin, userPerms],
+  );
 
   const toggleGroup = (title: string) => {
     setExpandedGroups((prev) =>
@@ -412,7 +463,7 @@ export function Sidebar() {
 
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto px-2 py-3">
-          {renderNavItems(navigation)}
+          {renderNavItems(visibleNavItems)}
         </nav>
 
         {/* Collapse toggle */}

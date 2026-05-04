@@ -130,6 +130,7 @@ export class AuthService {
 
     // Fetch user role and permissions
     let userPermissions: string[] = [];
+    let roleSlug: string | undefined;
     if (user.roleId) {
       const [role] = await this.db
         .select()
@@ -139,6 +140,7 @@ export class AuthService {
 
       if (role) {
         userPermissions = (role.permissions as string[]) || [];
+        roleSlug = role.slug;
       }
     }
 
@@ -150,6 +152,8 @@ export class AuthService {
       permissions: userPermissions,
       firstName: user.firstName,
       lastName: user.lastName,
+      employeeId: user.employeeId ?? null,
+      roleSlug,
     });
 
     await this.auditService.logSecurityEvent({
@@ -175,6 +179,8 @@ export class AuthService {
         tenantId: tenant.id,
         tenantName: tenant.name,
         tenantSlug: tenant.slug,
+        roleSlug,
+        employeeId: user.employeeId ?? null,
       },
     };
   }
@@ -288,6 +294,7 @@ export class AuthService {
       }
 
       let userPermissions: string[] = [];
+      let roleSlug: string | undefined;
       if (user.roleId) {
         const [role] = await this.db
           .select()
@@ -297,6 +304,7 @@ export class AuthService {
 
         if (role) {
           userPermissions = (role.permissions as string[]) || [];
+          roleSlug = role.slug;
         }
       }
 
@@ -308,6 +316,8 @@ export class AuthService {
         permissions: userPermissions,
         firstName: user.firstName,
         lastName: user.lastName,
+        employeeId: user.employeeId ?? null,
+        roleSlug,
       });
     } catch (error) {
       throw new UnauthorizedException('Invalid or expired refresh token');
@@ -448,6 +458,7 @@ export class AuthService {
         .where(eq(users.id, user.id));
 
       let userPermissions: string[] = [];
+      let roleSlug: string | undefined;
       if (user.roleId) {
         const [role] = await this.db
           .select()
@@ -457,6 +468,7 @@ export class AuthService {
 
         if (role) {
           userPermissions = (role.permissions as string[]) || [];
+          roleSlug = role.slug;
         }
       }
 
@@ -468,6 +480,8 @@ export class AuthService {
         permissions: userPermissions,
         firstName: user.firstName,
         lastName: user.lastName,
+        employeeId: user.employeeId ?? null,
+        roleSlug,
       });
     } catch (error) {
       if (error instanceof UnauthorizedException) throw error;

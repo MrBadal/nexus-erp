@@ -8,6 +8,10 @@ export interface JwtPayload {
   permissions: string[];
   firstName: string;
   lastName: string;
+  /** Linked employee record (null for admin users with no HR profile). Used by SelfScopedGuard for ESS routes. */
+  employeeId?: string | null;
+  /** Role slug — used by frontend to choose post-login redirect (employee → /ess, others → /dashboard). */
+  roleSlug?: string;
 }
 
 export const CurrentUser = createParamDecorator(

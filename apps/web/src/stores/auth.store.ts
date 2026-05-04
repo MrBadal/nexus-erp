@@ -18,26 +18,44 @@ interface AuthState {
   initialize: () => void;
 }
 
+// Compute initial auth state synchronously from localStorage (no async, no flash)
+const getInitialAuthState = () => {
+  if (typeof window === "undefined") {
+    return { user: null, accessToken: null, refreshToken: null, tenant: null, permissions: [], isAuthenticated: false };
+  }
+  const token = localStorage.getItem("nexus_access_token");
+  const userStr = localStorage.getItem("nexus_user");
+  if (token && userStr) {
+    try {
+      const user = JSON.parse(userStr) as User;
+      const tenantStr = localStorage.getItem("nexus_tenant");
+      const permissionsStr = localStorage.getItem("nexus_permissions");
+      return {
+        user,
+        accessToken: token,
+        refreshToken: localStorage.getItem("nexus_refresh_token"),
+        tenant: tenantStr ? (JSON.parse(tenantStr) as Tenant) : null,
+        permissions: permissionsStr ? (JSON.parse(permissionsStr) as Permission[]) : [],
+        isAuthenticated: true,
+      };
+    } catch {
+      // fall through to unauthenticated
+    }
+  }
+  return { user: null, accessToken: null, refreshToken: null, tenant: null, permissions: [], isAuthenticated: false };
+};
+
 export const useAuthStore = create<AuthState>((set, get) => ({
-  user: null,
-  accessToken: null,
-  refreshToken: null,
-  tenant: null,
-  permissions: [],
-  isAuthenticated: false,
-  isLoading: true,
+  ...getInitialAuthState(),
+  isLoading: false, // never show loading splash — init is synchronous
 
   setAuth: (user, tokens, tenant, permissions) => {
     if (typeof window !== "undefined") {
       localStorage.setItem("nexus_access_token", tokens.accessToken);
       localStorage.setItem("nexus_refresh_token", tokens.refreshToken);
       localStorage.setItem("nexus_user", JSON.stringify(user));
-      if (tenant) {
-        localStorage.setItem("nexus_tenant", JSON.stringify(tenant));
-      }
-      if (permissions) {
-        localStorage.setItem("nexus_permissions", JSON.stringify(permissions));
-      }
+      if (tenant) localStorage.setItem("nexus_tenant", JSON.stringify(tenant));
+      if (permissions) localStorage.setItem("nexus_permissions", JSON.stringify(permissions));
     }
     set({
       user,
@@ -87,36 +105,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     });
   },
 
+  // Keep initialize() for backwards compatibility but it's now a no-op
+  // since state is already loaded synchronously at store creation
   initialize: () => {
-    if (typeof window !== "undefined") {
-      const token = localStorage.getItem("nexus_access_token");
-      const refreshToken = localStorage.getItem("nexus_refresh_token");
-      const userStr = localStorage.getItem("nexus_user");
-      const tenantStr = localStorage.getItem("nexus_tenant");
-      const permissionsStr = localStorage.getItem("nexus_permissions");
-
-      if (token && userStr) {
-        try {
-          const user = JSON.parse(userStr) as User;
-          const tenant = tenantStr ? (JSON.parse(tenantStr) as Tenant) : null;
-          const permissions = permissionsStr
-            ? (JSON.parse(permissionsStr) as Permission[])
-            : [];
-          set({
-            user,
-            accessToken: token,
-            refreshToken,
-            tenant,
-            permissions,
-            isAuthenticated: true,
-            isLoading: false,
-          });
-        } catch {
-          set({ isLoading: false });
-        }
-      } else {
-        set({ isLoading: false });
-      }
-    }
+    const state = getInitialAuthState();
+    set({ ...state, isLoading: false });
   },
 }));
