@@ -34,18 +34,120 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Response interceptor: handle errors globally
+// ─── Auth refresh handling ───────────────────────────────────────────
+//
+// Access tokens expire in 15 minutes. Instead of logging the user out the
+// moment the token expires, we transparently exchange the long-lived
+// refresh token (7 days) for a new pair via POST /auth/refresh, then
+// retry the original request. If the refresh ITSELF fails (refresh token
+// expired or invalidated), THEN we log the user out.
+//
+// Concurrency control: while one refresh is in flight, every other
+// 401-failing request is queued and retried with the new token once the
+// refresh completes. This avoids N parallel refreshes and the resulting
+// race where each refresh invalidates the others' tokens.
+
+let isRefreshing = false;
+type Subscriber = (token: string | null) => void;
+let pendingRequests: Subscriber[] = [];
+
+function fanOut(token: string | null) {
+  pendingRequests.forEach((cb) => cb(token));
+  pendingRequests = [];
+}
+
+function clearAuthAndRedirect() {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem("nexus_access_token");
+  localStorage.removeItem("nexus_refresh_token");
+  localStorage.removeItem("nexus_user");
+  localStorage.removeItem("nexus_tenant");
+  localStorage.removeItem("nexus_permissions");
+  // Use location.replace so /login is not in the back-stack.
+  if (window.location.pathname !== "/login") {
+    window.location.replace("/login");
+  }
+}
+
 api.interceptors.response.use(
   (response: AxiosResponse) => response,
-  (error: AxiosError<ApiResponse<null>>) => {
-    if (error.response?.status === 401) {
-      if (typeof window !== "undefined") {
-        localStorage.removeItem("nexus_access_token");
-        localStorage.removeItem("nexus_user");
-        window.location.href = "/login";
-      }
+  async (error: AxiosError<ApiResponse<null>>) => {
+    const original = error.config as
+      | (NonNullable<AxiosError["config"]> & { _retry?: boolean })
+      | undefined;
+
+    // Pass through anything that isn't a 401 or doesn't have a config.
+    if (!original || error.response?.status !== 401) {
+      return Promise.reject(error);
     }
-    return Promise.reject(error);
+
+    // Don't try to refresh on the login or refresh endpoints themselves.
+    const url = original.url ?? "";
+    if (url.includes("/auth/login") || url.includes("/auth/refresh")) {
+      return Promise.reject(error);
+    }
+
+    // Already retried once — give up.
+    if (original._retry) {
+      clearAuthAndRedirect();
+      return Promise.reject(error);
+    }
+
+    if (typeof window === "undefined") {
+      return Promise.reject(error);
+    }
+    const refreshToken = localStorage.getItem("nexus_refresh_token");
+    if (!refreshToken) {
+      clearAuthAndRedirect();
+      return Promise.reject(error);
+    }
+
+    // If a refresh is in flight, queue this request.
+    if (isRefreshing) {
+      return new Promise((resolve, reject) => {
+        pendingRequests.push((newToken) => {
+          if (!newToken) {
+            reject(error);
+            return;
+          }
+          original.headers = original.headers ?? {};
+          (original.headers as Record<string, string>).Authorization = `Bearer ${newToken}`;
+          api(original).then(resolve, reject);
+        });
+      });
+    }
+
+    original._retry = true;
+    isRefreshing = true;
+
+    try {
+      // Use a bare axios call (not `api`) so the interceptor doesn't recurse on this refresh.
+      const refreshUrl = `${api.defaults.baseURL}/auth/refresh`;
+      const { data } = await axios.post<{
+        accessToken: string;
+        refreshToken: string;
+        tokenType: string;
+        expiresIn: string;
+      }>(refreshUrl, { refreshToken });
+
+      localStorage.setItem("nexus_access_token", data.accessToken);
+      localStorage.setItem("nexus_refresh_token", data.refreshToken);
+
+      // Wake up queued requests with the new token.
+      fanOut(data.accessToken);
+
+      // Retry the original request with the new token.
+      original.headers = original.headers ?? {};
+      (original.headers as Record<string, string>).Authorization = `Bearer ${data.accessToken}`;
+      return api(original);
+    } catch (refreshErr) {
+      // Refresh token itself is invalid / expired → real logout.
+      fanOut(null);
+      clearAuthAndRedirect();
+      return Promise.reject(refreshErr);
+    } finally {
+      isRefreshing = false;
+    }
   }
 );
 
