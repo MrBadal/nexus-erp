@@ -324,14 +324,20 @@ export function Sidebar() {
   const [expandedGroups, setExpandedGroups] = React.useState<string[]>([
     "Finance",
   ]);
-  // Permission-aware filtering of nav groups. Pulled here (not at module scope) so it re-runs
-  // when the user changes (e.g. login as different role).
-  const userPerms = useAuthStore((s) =>
-    (s.permissions as unknown as Array<{ module?: string; resource?: string; action?: string } | string>).map((p) =>
-      typeof p === 'string' ? p : `${p.module ?? ''}:${p.resource ?? ''}`,
-    ),
-  );
+  // Permission-aware filtering of nav groups.
+  // CRITICAL: select the RAW permissions reference (stable across renders) and do the
+  // string normalization inside useMemo. Doing `.map()` inside the Zustand selector
+  // returns a new array every call → useSyncExternalStore detects a snapshot change →
+  // infinite render loop. See https://zustand.docs.pmnd.rs/guides/prevent-rerenders.
+  const rawPermissions = useAuthStore((s) => s.permissions);
   const userRoleSlug = useAuthStore((s) => s.user?.roleSlug);
+  const userPerms = React.useMemo<string[]>(
+    () =>
+      (rawPermissions as unknown as Array<
+        { module?: string; resource?: string; action?: string } | string
+      >).map((p) => (typeof p === 'string' ? p : `${p.module ?? ''}:${p.resource ?? ''}`)),
+    [rawPermissions],
+  );
   // Admin slug or wildcard permission unlocks everything; otherwise filter by requiredPrefix.
   const isAdmin = userRoleSlug === 'admin' || userPerms.includes('*');
   const visibleNavItems = React.useMemo(

@@ -105,10 +105,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     });
   },
 
-  // Keep initialize() for backwards compatibility but it's now a no-op
-  // since state is already loaded synchronously at store creation
+  // Kept for backwards compatibility; truly a no-op now because state was
+  // already loaded synchronously at store creation. Calling set() here would
+  // create new array references on every mount and force every selector
+  // subscriber to re-render unnecessarily.
   initialize: () => {
-    const state = getInitialAuthState();
-    set({ ...state, isLoading: false });
+    if (get().isLoading) set({ isLoading: false });
   },
 }));
