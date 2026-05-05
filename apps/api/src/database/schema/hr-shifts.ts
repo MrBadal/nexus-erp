@@ -12,8 +12,8 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import { tenants } from './tenants.js';
-import { employees } from './hr.js';
+import { tenants } from './tenants';
+import { employees } from './hr';
 
 // ─── Shifts ─────────────────────────────────────────────
 

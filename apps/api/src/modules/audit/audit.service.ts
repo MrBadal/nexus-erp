@@ -96,12 +96,24 @@ export class AuditService {
     eventType: string;
     details?: any;
   }) {
+    // Map free-form security event types to the closest audit_action enum value.
+    // Specific event type is preserved in metadata.eventType for filtering.
+    const action: string = data.eventType.startsWith('logout')
+      ? 'logout'
+      : data.eventType.startsWith('login')
+        ? 'login'
+        : data.eventType.includes('delete') || data.eventType.includes('revoke')
+          ? 'delete'
+          : data.eventType.includes('create') || data.eventType.includes('grant')
+            ? 'create'
+            : 'update';
     return this.logAction({
       tenantId: data.tenantId,
       userId: data.userId,
-      action: `security.${data.eventType}`,
+      action,
       entityType: 'security_event',
       changes: data.details ?? null,
+      metadata: { eventType: data.eventType },
     });
   }
 
@@ -109,10 +121,10 @@ export class AuditService {
   async getSecurityEvents(tenantId: string, eventType?: string, limit = 100) {
     const conditions = [
       eq(auditLog.tenantId, tenantId),
-      sql`${auditLog.action}::text LIKE 'security.%'`,
+      eq(auditLog.entityType, 'security_event'),
     ];
     if (eventType) {
-      conditions.push(sql`${auditLog.action}::text = ${`security.${eventType}`}`);
+      conditions.push(sql`${auditLog.metadata}->>'eventType' = ${eventType}`);
     }
     return this.db
       .select()

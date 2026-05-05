@@ -172,6 +172,43 @@ async function seed() {
       hierarchyLevel: 10,
       permissions: ['*.read'],
     },
+    {
+      tenantId,
+      name: 'HR Manager',
+      slug: 'hr_manager',
+      description: 'Full HRMS access — employees, payroll, recruitment, performance, onboarding',
+      isSystem: true,
+      hierarchyLevel: 40,
+      permissions: [
+        'hr:read', 'hr:write', 'hr:attendance:write',
+        'hr:approve_leave', 'hr:approve_expense', 'hr:run_payroll',
+        'hr:manage_recruitment', 'hr:manage_performance', 'hr:manage_onboarding',
+        'hr:post_announcement', 'hr:manage_documents', 'hr:manage_shifts',
+        'audit:read',
+      ],
+    },
+    {
+      tenantId,
+      name: 'HR Executive',
+      slug: 'hr_executive',
+      description: 'HR operations — attendance, leave, expense approvals, recruitment',
+      isSystem: true,
+      hierarchyLevel: 30,
+      permissions: [
+        'hr:read', 'hr:attendance:write',
+        'hr:approve_leave', 'hr:approve_expense',
+        'hr:manage_recruitment',
+      ],
+    },
+    {
+      tenantId,
+      name: 'Employee',
+      slug: 'employee',
+      description: 'Self-service portal access — view own profile, attendance, leave, payslips, expenses',
+      isSystem: true,
+      hierarchyLevel: 5,
+      permissions: ['ess:read', 'ess:write', 'ess:apply_leave', 'ess:submit_expense', 'ess:check_in'],
+    },
   ]);
 
   // ── 4. Create admin user ────────────────────────────────────────────────
