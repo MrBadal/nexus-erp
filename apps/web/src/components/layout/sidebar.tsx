@@ -60,6 +60,17 @@ import {
   PackageMinus,
   Lock,
   Repeat,
+  Megaphone,
+  Award,
+  Network,
+  UserPlus,
+  UserMinus,
+  CalendarDays,
+  AlarmClock,
+  ListChecks,
+  GraduationCap,
+  FolderOpen,
+  BadgeIndianRupee,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -168,18 +179,72 @@ const navigation: NavItem[] = [
     icon: Users,
     requiredPrefix: ['hr:'],
     children: [
+      { title: "HR Dashboard", href: "/hr", icon: LayoutDashboard },
+      // ── People ──
       { title: "Employees", href: "/hr/employees", icon: UserCircle },
+      { title: "Org Chart", href: "/hr/org-chart", icon: Network },
       { title: "Departments", href: "/hr/departments", icon: Building2 },
-      { title: "Attendance", href: "/hr/attendance", icon: Clock },
-      { title: "Leave", href: "/hr/leave", icon: Calendar },
+      { title: "Designations", href: "/hr/designations", icon: GraduationCap },
+      // ── Attendance & shift ──
+      {
+        title: "Attendance",
+        icon: Clock,
+        children: [
+          { title: "Records", href: "/hr/attendance", icon: ClipboardCheck },
+          { title: "Shifts", href: "/hr/shifts", icon: AlarmClock },
+          { title: "Policies", href: "/hr/attendance-policies", icon: Gauge },
+        ],
+      },
+      // ── Leave ──
+      {
+        title: "Leave",
+        icon: Calendar,
+        children: [
+          { title: "Applications", href: "/hr/leave", icon: ClipboardList },
+          { title: "Apply", href: "/hr/leave/apply", icon: Send },
+          { title: "Leave Types", href: "/hr/leave-types", icon: BookOpenCheck },
+          { title: "Holidays", href: "/hr/holidays", icon: CalendarDays },
+        ],
+      },
+      // ── Pay ──
       { title: "Payroll", href: "/hr/payroll", icon: Wallet },
       { title: "Expense Claims", href: "/hr/expense-claims", icon: Receipt },
+      // ── Lifecycle ──
+      { title: "Onboarding", href: "/hr/onboarding", icon: UserPlus },
+      { title: "Offboarding", href: "/hr/offboarding", icon: UserMinus },
+      // ── Performance ──
+      {
+        title: "Performance",
+        icon: Award,
+        children: [
+          { title: "Review Cycles", href: "/hr/performance", icon: Calendar },
+          { title: "KRA Templates", href: "/hr/performance/templates", icon: ListChecks },
+        ],
+      },
+      // ── Recruitment ──
       {
         title: "Recruitment",
         icon: UserCircle,
         children: [
           { title: "Job Openings", href: "/hr/recruitment/job-openings", icon: ClipboardList },
           { title: "Candidates", href: "/hr/recruitment/candidates", icon: Users },
+        ],
+      },
+      // ── Engagement & docs ──
+      { title: "Documents", href: "/hr/documents", icon: FolderOpen },
+      { title: "Announcements", href: "/hr/announcements", icon: Megaphone },
+      // ── Statutory reports (India) ──
+      {
+        title: "Reports",
+        icon: BarChart3,
+        children: [
+          { title: "All Reports", href: "/hr/reports", icon: FileText },
+          { title: "Form 16", href: "/hr/reports/form-16", icon: FileText },
+          { title: "Gratuity", href: "/hr/reports/gratuity", icon: BadgeIndianRupee },
+          { title: "PF Return", href: "/hr/reports/pf-return", icon: BarChart3 },
+          { title: "ESI Return", href: "/hr/reports/esi-return", icon: BarChart3 },
+          { title: "PT Register", href: "/hr/reports/pt-register", icon: BarChart3 },
+          { title: "TDS Quarterly", href: "/hr/reports/tds-quarterly", icon: BarChart3 },
         ],
       },
     ],
