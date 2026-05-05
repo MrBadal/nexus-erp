@@ -170,7 +170,7 @@ export class EmployeeService {
       firstName: data.firstName,
       lastName: data.lastName,
       email: data.email,
-      phone: data.phone || null,
+      phone: data.phone ? data.phone.replace(/[\s-]/g, '') : null,
       dateOfBirth: data.dateOfBirth || null,
       gender: (data.gender as 'male' | 'female' | 'other') || null,
       maritalStatus: (data.maritalStatus as 'single' | 'married' | 'divorced' | 'widowed') || null,
@@ -178,7 +178,7 @@ export class EmployeeService {
       address: data.address || null,
       city: data.city || null,
       state: data.state || null,
-      country: data.country || null,
+      country: data.country || 'India',
       postalCode: data.postalCode || null,
       departmentId: data.departmentId || null,
       designationId: data.designationId || null,
@@ -188,10 +188,17 @@ export class EmployeeService {
       dateOfJoining: data.dateOfJoining,
       status: 'active',
       emergencyContactName: data.emergencyContactName || null,
-      emergencyContactPhone: data.emergencyContactPhone || null,
+      emergencyContactPhone: data.emergencyContactPhone ? data.emergencyContactPhone.replace(/[\s-]/g, '') : null,
       bankName: data.bankName || null,
       bankAccountNumber: data.bankAccountNumber || null,
-      bankRoutingNumber: data.bankRoutingNumber || null,
+      bankIfscCode: data.bankIfscCode ? data.bankIfscCode.toUpperCase() : null,
+      // Indian statutory identifiers
+      panNumber: data.panNumber ? data.panNumber.toUpperCase() : null,
+      aadhaarNumber: data.aadhaarNumber ? data.aadhaarNumber.replace(/[\s-]/g, '') : null,
+      uanNumber: data.uanNumber || null,
+      esicNumber: data.esicNumber || null,
+      taxRegime: (data.taxRegime as 'old' | 'new') || 'new',
+      pfState: data.pfState || data.state || null,
       profileImageUrl: data.profileImageUrl || null,
     };
 
@@ -267,7 +274,13 @@ export class EmployeeService {
     if (data.emergencyContactPhone !== undefined) updateData.emergencyContactPhone = data.emergencyContactPhone;
     if (data.bankName !== undefined) updateData.bankName = data.bankName;
     if (data.bankAccountNumber !== undefined) updateData.bankAccountNumber = data.bankAccountNumber;
-    if (data.bankRoutingNumber !== undefined) updateData.bankRoutingNumber = data.bankRoutingNumber;
+    if (data.bankIfscCode !== undefined) updateData.bankIfscCode = data.bankIfscCode ? data.bankIfscCode.toUpperCase() : null;
+    if (data.panNumber !== undefined) updateData.panNumber = data.panNumber ? data.panNumber.toUpperCase() : null;
+    if (data.aadhaarNumber !== undefined) updateData.aadhaarNumber = data.aadhaarNumber ? data.aadhaarNumber.replace(/[\s-]/g, '') : null;
+    if (data.uanNumber !== undefined) updateData.uanNumber = data.uanNumber;
+    if (data.esicNumber !== undefined) updateData.esicNumber = data.esicNumber;
+    if (data.taxRegime !== undefined) updateData.taxRegime = data.taxRegime;
+    if (data.pfState !== undefined) updateData.pfState = data.pfState;
     if (data.profileImageUrl !== undefined) updateData.profileImageUrl = data.profileImageUrl;
 
     const [updated] = await this.db

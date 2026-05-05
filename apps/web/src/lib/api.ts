@@ -741,6 +741,14 @@ export const endpoints = {
     addRate: '/finance/currencies/exchange-rates',
     setExchangeRate: '/finance/currencies/exchange-rates',
   },
+
+  designations: {
+    list: '/hr/designations',
+    get: (id: string) => `/hr/designations/${id}`,
+    create: '/hr/designations',
+    update: (id: string) => `/hr/designations/${id}`,
+    delete: (id: string) => `/hr/designations/${id}`,
+  },
   fiscalPeriods: {
     list: '/finance/fiscal-periods',
     get: (id: string) => `/finance/fiscal-periods/${id}`,
