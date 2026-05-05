@@ -1,0 +1,18 @@
+**/node_modules
+**/dist
+**/.turbo
+**/.git
+**/coverage
+**/.env
+**/*.log
+**/.claude
+**/.firecrawl
+**/_pdf_*
+**/*.pdf
+**/*.docx
+**/*.xlsx
+**/tsconfig.tsbuildinfo
+# Web build artifacts: keep .next/standalone and .next/static (web Dockerfile uses them)
+# but skip dev cache.
+apps/web/.next/cache
+apps/web/.next/trace

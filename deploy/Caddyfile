@@ -1,0 +1,24 @@
+# Caddy reverse proxy with automatic Let's Encrypt HTTPS for nexus.34-31-184-93.nip.io.
+# Hostname is hardcoded because Caddy treats `{$VAR}` at the very start of a file as a
+# global-options block opener.
+nexus.34-31-184-93.nip.io {
+    encode gzip zstd
+
+    # NestJS backend: /api/* and /docs* (Swagger).
+    handle /api/* {
+        reverse_proxy api:4000
+    }
+    handle /docs* {
+        reverse_proxy api:4000
+    }
+
+    # Everything else → Next.js web app.
+    handle {
+        reverse_proxy web:3000
+    }
+
+    log {
+        output stdout
+        format console
+    }
+}
