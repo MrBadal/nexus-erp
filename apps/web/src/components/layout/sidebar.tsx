@@ -123,6 +123,7 @@ const navigation: NavItem[] = [
         icon: ClipboardList,
       },
       { title: "Invoices", href: "/finance/invoices", icon: FileText },
+      { title: "Bills", href: "/finance/bills", icon: Receipt },
       { title: "Payments", href: "/finance/payments", icon: CreditCard },
       { title: "Budgets", href: "/finance/budgets", icon: BarChart3 },
       { title: "Recurring Invoices", href: "/finance/recurring-invoices", icon: Repeat },
