@@ -8,14 +8,25 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { useCreateKraTemplate, type KraItem } from '@/hooks/use-performance';
+import { useDesignations } from '@/hooks/use-hr';
+
+const NO_DESIGNATION = '__none__';
 
 export default function NewKraTemplatePage() {
   const router = useRouter();
   const [name, setName] = useState('');
-  const [designationId, setDesignationId] = useState('');
+  const [designationId, setDesignationId] = useState<string>(NO_DESIGNATION);
   const [items, setItems] = useState<KraItem[]>([{ title: '', weight: 0, target: '' }]);
   const create = useCreateKraTemplate();
+  const { data: designations } = useDesignations();
 
   const updateItem = (idx: number, patch: Partial<KraItem>) => {
     setItems((prev) => prev.map((item, i) => (i === idx ? { ...item, ...patch } : item)));
@@ -35,7 +46,8 @@ export default function NewKraTemplatePage() {
     }
     await create.mutateAsync({
       name,
-      designationId: designationId || undefined,
+      designationId:
+        designationId && designationId !== NO_DESIGNATION ? designationId : undefined,
       kras: items.filter((i) => i.title.trim()),
     });
     router.push('/hr/performance/templates');
@@ -82,13 +94,20 @@ export default function NewKraTemplatePage() {
               />
             </div>
             <div>
-              <Label htmlFor="designation">Designation ID (optional)</Label>
-              <Input
-                id="designation"
-                value={designationId}
-                onChange={(e) => setDesignationId(e.target.value)}
-                placeholder="UUID — leave blank for all designations"
-              />
+              <Label htmlFor="designation">Designation (optional)</Label>
+              <Select value={designationId} onValueChange={setDesignationId}>
+                <SelectTrigger id="designation">
+                  <SelectValue placeholder="All designations" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_DESIGNATION}>All designations</SelectItem>
+                  {(designations ?? []).map((d) => (
+                    <SelectItem key={d.id} value={d.id}>
+                      {d.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </CardContent>

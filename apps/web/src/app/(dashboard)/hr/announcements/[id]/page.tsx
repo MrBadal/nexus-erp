@@ -20,7 +20,7 @@ import {
   type AnnouncementUpdateInput,
   type AnnouncementStatus,
 } from '@/hooks/use-announcements';
-import { useDepartments, useEmployees } from '@/hooks/use-hr';
+import { useDepartments, useDesignations, useEmployees } from '@/hooks/use-hr';
 
 const audienceOptions: { value: AnnouncementAudienceScope; label: string }[] = [
   { value: 'tenant', label: 'Everyone' },
@@ -66,6 +66,7 @@ export default function AnnouncementDetailPage() {
   const deleteMutation = useDeleteAnnouncement();
 
   const { data: departments } = useDepartments();
+  const { data: designations } = useDesignations();
   const { data: employees } = useEmployees();
 
   const [editing, setEditing] = useState(false);
@@ -95,6 +96,9 @@ export default function AnnouncementDetailPage() {
     if (form.audienceScope === 'department') {
       return (departments ?? []).map((d) => ({ id: d.id, label: d.name }));
     }
+    if (form.audienceScope === 'designation') {
+      return (designations ?? []).map((d) => ({ id: d.id, label: d.name }));
+    }
     if (form.audienceScope === 'specific') {
       return (employees ?? []).map((e) => ({
         id: e.id,
@@ -102,7 +106,7 @@ export default function AnnouncementDetailPage() {
       }));
     }
     return [];
-  }, [departments, employees, form.audienceScope]);
+  }, [departments, designations, employees, form.audienceScope]);
 
   if (isLoading) {
     return (
@@ -162,15 +166,18 @@ export default function AnnouncementDetailPage() {
       toast.error('Pick at least one recipient');
       return;
     }
+    // DTO uses @IsOptional() + @IsISO8601() — null is rejected, omit instead
     const data: AnnouncementUpdateInput = {
       title: form.title.trim(),
       body: form.body.trim(),
       audienceScope: form.audienceScope,
       audienceIds: form.audienceScope === 'tenant' ? [] : form.audienceIds,
-      publishedAt: form.publishedAt
-        ? new Date(form.publishedAt).toISOString()
-        : null,
-      expiresAt: form.expiresAt ? new Date(form.expiresAt).toISOString() : null,
+      ...(form.publishedAt
+        ? { publishedAt: new Date(form.publishedAt).toISOString() }
+        : {}),
+      ...(form.expiresAt
+        ? { expiresAt: new Date(form.expiresAt).toISOString() }
+        : {}),
     };
     updateMutation.mutate(
       { id, data },
@@ -334,47 +341,31 @@ export default function AnnouncementDetailPage() {
 
               {form.audienceScope !== 'tenant' && (
                 <FormField label="Recipients" required>
-                  {form.audienceScope === 'designation' ? (
-                    <Input
-                      placeholder="Designation IDs (comma separated UUIDs)"
-                      value={form.audienceIds.join(',')}
-                      onChange={(e) =>
-                        setForm((p) => ({
-                          ...p,
-                          audienceIds: e.target.value
-                            .split(',')
-                            .map((s) => s.trim())
-                            .filter(Boolean),
-                        }))
-                      }
-                    />
-                  ) : (
-                    <div className="max-h-64 overflow-y-auto rounded-md border p-2">
-                      {audiencePickerItems.length === 0 ? (
-                        <p className="p-2 text-sm text-muted-foreground">
-                          No options available.
-                        </p>
-                      ) : (
-                        <div className="space-y-1">
-                          {audiencePickerItems.map((item) => {
-                            const checked = form.audienceIds.includes(item.id);
-                            return (
-                              <label
-                                key={item.id}
-                                className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-accent"
-                              >
-                                <Checkbox
-                                  checked={checked}
-                                  onCheckedChange={() => toggleAudienceId(item.id)}
-                                />
-                                <span className="text-sm">{item.label}</span>
-                              </label>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  )}
+                  <div className="max-h-64 overflow-y-auto rounded-md border p-2">
+                    {audiencePickerItems.length === 0 ? (
+                      <p className="p-2 text-sm text-muted-foreground">
+                        No options available.
+                      </p>
+                    ) : (
+                      <div className="space-y-1">
+                        {audiencePickerItems.map((item) => {
+                          const checked = form.audienceIds.includes(item.id);
+                          return (
+                            <label
+                              key={item.id}
+                              className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-accent"
+                            >
+                              <Checkbox
+                                checked={checked}
+                                onCheckedChange={() => toggleAudienceId(item.id)}
+                              />
+                              <span className="text-sm">{item.label}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </FormField>
               )}
             </FormSection>

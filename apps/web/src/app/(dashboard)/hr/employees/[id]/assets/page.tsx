@@ -142,12 +142,22 @@ function AssignAssetDialog({
 
           <div>
             <Label htmlFor="condition">Condition at handover</Label>
-            <Input
-              id="condition"
-              placeholder="e.g., new, good, fair"
-              value={conditionAtAssign}
-              onChange={(e) => setConditionAtAssign(e.target.value)}
-            />
+            <Select
+              value={conditionAtAssign || '__none__'}
+              onValueChange={(v) => setConditionAtAssign(v === '__none__' ? '' : v)}
+            >
+              <SelectTrigger id="condition">
+                <SelectValue placeholder="Not specified" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">Not specified</SelectItem>
+                <SelectItem value="new">New</SelectItem>
+                <SelectItem value="good">Good</SelectItem>
+                <SelectItem value="fair">Fair</SelectItem>
+                <SelectItem value="poor">Poor</SelectItem>
+                <SelectItem value="damaged">Damaged</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <div>
@@ -231,12 +241,25 @@ function ReturnAssetDialog({
         <div className="space-y-4">
           <div>
             <Label htmlFor="return-condition">Condition at return</Label>
-            <Input
-              id="return-condition"
-              placeholder="e.g., good, damaged"
-              value={conditionAtReturn}
-              onChange={(e) => setConditionAtReturn(e.target.value)}
-            />
+            <Select
+              value={conditionAtReturn || '__none__'}
+              onValueChange={(v) =>
+                setConditionAtReturn(v === '__none__' ? '' : v)
+              }
+            >
+              <SelectTrigger id="return-condition">
+                <SelectValue placeholder="Not specified" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">Not specified</SelectItem>
+                <SelectItem value="new">New</SelectItem>
+                <SelectItem value="good">Good</SelectItem>
+                <SelectItem value="fair">Fair</SelectItem>
+                <SelectItem value="poor">Poor</SelectItem>
+                <SelectItem value="damaged">Damaged</SelectItem>
+                <SelectItem value="lost">Lost</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <div>

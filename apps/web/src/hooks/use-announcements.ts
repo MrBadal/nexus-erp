@@ -41,8 +41,10 @@ export interface AnnouncementCreateInput {
   body: string;
   audienceScope: AnnouncementAudienceScope;
   audienceIds?: string[];
-  publishedAt?: string | null;
-  expiresAt?: string | null;
+  /** ISO 8601 — omit (not null) for draft */
+  publishedAt?: string;
+  /** ISO 8601 — omit (not null) when no expiry */
+  expiresAt?: string;
 }
 
 export interface AnnouncementUpdateInput extends Partial<AnnouncementCreateInput> {}

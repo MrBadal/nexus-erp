@@ -16,7 +16,7 @@ import {
   type AnnouncementAudienceScope,
   type AnnouncementCreateInput,
 } from '@/hooks/use-announcements';
-import { useDepartments, useEmployees } from '@/hooks/use-hr';
+import { useDepartments, useDesignations, useEmployees } from '@/hooks/use-hr';
 
 interface FormState {
   title: string;
@@ -50,6 +50,7 @@ export default function NewAnnouncementPage() {
   const createAnnouncement = useCreateAnnouncement();
 
   const { data: departments } = useDepartments();
+  const { data: designations } = useDesignations();
   const { data: employees } = useEmployees();
 
   const update = <K extends keyof FormState>(field: K, value: FormState[K]) => {
@@ -89,17 +90,22 @@ export default function NewAnnouncementPage() {
   const handleSubmit = (publishNow = false) => {
     if (!validate()) return;
 
+    // DTO uses @IsOptional() + @IsISO8601() — null is rejected, omit instead
     const payload: AnnouncementCreateInput = {
       title: form.title.trim(),
       body: form.body.trim(),
       audienceScope: form.audienceScope,
-      audienceIds: form.audienceScope === 'tenant' ? undefined : form.audienceIds,
-      publishedAt: publishNow
-        ? new Date().toISOString()
+      ...(form.audienceScope !== 'tenant' && form.audienceIds.length > 0
+        ? { audienceIds: form.audienceIds }
+        : {}),
+      ...(publishNow
+        ? { publishedAt: new Date().toISOString() }
         : form.publishedAt
-          ? new Date(form.publishedAt).toISOString()
-          : null,
-      expiresAt: form.expiresAt ? new Date(form.expiresAt).toISOString() : null,
+          ? { publishedAt: new Date(form.publishedAt).toISOString() }
+          : {}),
+      ...(form.expiresAt
+        ? { expiresAt: new Date(form.expiresAt).toISOString() }
+        : {}),
     };
 
     createAnnouncement.mutate(payload, {
@@ -117,6 +123,9 @@ export default function NewAnnouncementPage() {
     if (form.audienceScope === 'department') {
       return (departments ?? []).map((d) => ({ id: d.id, label: d.name }));
     }
+    if (form.audienceScope === 'designation') {
+      return (designations ?? []).map((d) => ({ id: d.id, label: d.name }));
+    }
     if (form.audienceScope === 'specific') {
       return (employees ?? []).map((e) => ({
         id: e.id,
@@ -124,7 +133,7 @@ export default function NewAnnouncementPage() {
       }));
     }
     return [];
-  }, [departments, employees, form.audienceScope]);
+  }, [departments, designations, employees, form.audienceScope]);
 
   return (
     <FormPage
@@ -205,53 +214,31 @@ export default function NewAnnouncementPage() {
 
           {form.audienceScope !== 'tenant' && (
             <FormField label="Recipients" required error={errors.audienceIds}>
-              {form.audienceScope === 'designation' ? (
-                <div className="space-y-2">
-                  <Input
-                    placeholder="Designation IDs (comma separated UUIDs)"
-                    value={form.audienceIds.join(',')}
-                    onChange={(e) =>
-                      update(
-                        'audienceIds',
-                        e.target.value
-                          .split(',')
-                          .map((s) => s.trim())
-                          .filter(Boolean),
-                      )
-                    }
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Provide one or more designation IDs. A picker UI will be added once a
-                    designation listing endpoint is wired up.
+              <div className="max-h-64 overflow-y-auto rounded-md border p-2">
+                {audiencePickerItems.length === 0 ? (
+                  <p className="p-2 text-sm text-muted-foreground">
+                    No options available.
                   </p>
-                </div>
-              ) : (
-                <div className="max-h-64 overflow-y-auto rounded-md border p-2">
-                  {audiencePickerItems.length === 0 ? (
-                    <p className="p-2 text-sm text-muted-foreground">
-                      No options available.
-                    </p>
-                  ) : (
-                    <div className="space-y-1">
-                      {audiencePickerItems.map((item) => {
-                        const checked = form.audienceIds.includes(item.id);
-                        return (
-                          <label
-                            key={item.id}
-                            className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-accent"
-                          >
-                            <Checkbox
-                              checked={checked}
-                              onCheckedChange={() => toggleAudienceId(item.id)}
-                            />
-                            <span className="text-sm">{item.label}</span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
+                ) : (
+                  <div className="space-y-1">
+                    {audiencePickerItems.map((item) => {
+                      const checked = form.audienceIds.includes(item.id);
+                      return (
+                        <label
+                          key={item.id}
+                          className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-accent"
+                        >
+                          <Checkbox
+                            checked={checked}
+                            onCheckedChange={() => toggleAudienceId(item.id)}
+                          />
+                          <span className="text-sm">{item.label}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
               {form.audienceIds.length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1">
                   {form.audienceIds.map((id) => (

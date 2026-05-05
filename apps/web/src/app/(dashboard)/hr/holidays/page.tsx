@@ -35,6 +35,46 @@ import {
 } from '@/hooks/use-holidays';
 import { formatDate } from '@/lib/utils';
 
+// 28 states + 8 union territories (2-letter codes per ISO 3166-2:IN)
+const INDIAN_STATE_OPTIONS: { code: string; name: string }[] = [
+  { code: 'AN', name: 'Andaman and Nicobar Islands' },
+  { code: 'AP', name: 'Andhra Pradesh' },
+  { code: 'AR', name: 'Arunachal Pradesh' },
+  { code: 'AS', name: 'Assam' },
+  { code: 'BR', name: 'Bihar' },
+  { code: 'CH', name: 'Chandigarh' },
+  { code: 'CG', name: 'Chhattisgarh' },
+  { code: 'DN', name: 'Dadra and Nagar Haveli and Daman and Diu' },
+  { code: 'DL', name: 'Delhi' },
+  { code: 'GA', name: 'Goa' },
+  { code: 'GJ', name: 'Gujarat' },
+  { code: 'HR', name: 'Haryana' },
+  { code: 'HP', name: 'Himachal Pradesh' },
+  { code: 'JK', name: 'Jammu and Kashmir' },
+  { code: 'JH', name: 'Jharkhand' },
+  { code: 'KA', name: 'Karnataka' },
+  { code: 'KL', name: 'Kerala' },
+  { code: 'LA', name: 'Ladakh' },
+  { code: 'LD', name: 'Lakshadweep' },
+  { code: 'MP', name: 'Madhya Pradesh' },
+  { code: 'MH', name: 'Maharashtra' },
+  { code: 'MN', name: 'Manipur' },
+  { code: 'ML', name: 'Meghalaya' },
+  { code: 'MZ', name: 'Mizoram' },
+  { code: 'NL', name: 'Nagaland' },
+  { code: 'OD', name: 'Odisha' },
+  { code: 'PY', name: 'Puducherry' },
+  { code: 'PB', name: 'Punjab' },
+  { code: 'RJ', name: 'Rajasthan' },
+  { code: 'SK', name: 'Sikkim' },
+  { code: 'TN', name: 'Tamil Nadu' },
+  { code: 'TG', name: 'Telangana' },
+  { code: 'TR', name: 'Tripura' },
+  { code: 'UP', name: 'Uttar Pradesh' },
+  { code: 'UK', name: 'Uttarakhand' },
+  { code: 'WB', name: 'West Bengal' },
+];
+
 const typeLabels: Record<HolidayType, string> = {
   national: 'National',
   state: 'State',
@@ -73,7 +113,8 @@ export default function HolidaysPage() {
   const [view, setView] = useState<'calendar' | 'list'>('calendar');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState<CreateHolidayInput>(emptyForm(currentYear));
-  const [regionsInput, setRegionsInput] = useState('');
+  const [selectedRegions, setSelectedRegions] = useState<string[]>([]);
+  const [regionsOpen, setRegionsOpen] = useState(false);
 
   const { data: holidays, isLoading } = useHolidays({ year });
   const createMutation = useCreateHoliday();
@@ -97,8 +138,15 @@ export default function HolidaysPage() {
 
   const handleOpenCreate = () => {
     setForm(emptyForm(year));
-    setRegionsInput('');
+    setSelectedRegions([]);
+    setRegionsOpen(false);
     setDialogOpen(true);
+  };
+
+  const toggleRegion = (code: string) => {
+    setSelectedRegions((prev) =>
+      prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code],
+    );
   };
 
   const handleSubmit = () => {
@@ -106,14 +154,18 @@ export default function HolidaysPage() {
       toast.error('Name and date are required');
       return;
     }
-    const regions = regionsInput
-      .split(',')
-      .map((r) => r.trim().toUpperCase())
-      .filter((r) => r.length > 0);
+    if (form.type === 'state' && selectedRegions.length === 0) {
+      toast.error('At least one state is required for state-level holidays');
+      return;
+    }
     const payload: CreateHolidayInput = {
-      ...form,
-      regions: regions.length > 0 ? regions : undefined,
+      date: form.date,
+      name: form.name.trim(),
+      type: form.type,
+      regions: selectedRegions.length > 0 ? selectedRegions : undefined,
+      isRecurring: form.isRecurring,
       year: new Date(form.date).getUTCFullYear(),
+      notes: form.notes?.trim() || undefined,
     };
 
     createMutation.mutate(payload, {
@@ -209,13 +261,43 @@ export default function HolidaysPage() {
                   </div>
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="holiday-regions">Regions (comma-separated state codes)</Label>
-                  <Input
+                  <Label htmlFor="holiday-regions">
+                    States / UTs {form.type === 'state' && <span className="text-destructive">*</span>}
+                  </Label>
+                  <button
+                    type="button"
                     id="holiday-regions"
-                    value={regionsInput}
-                    onChange={(e) => setRegionsInput(e.target.value)}
-                    placeholder="e.g. KA, MH, TN"
-                  />
+                    onClick={() => setRegionsOpen((o) => !o)}
+                    className="flex h-9 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-1 text-sm text-left hover:bg-accent"
+                  >
+                    <span className="truncate">
+                      {selectedRegions.length === 0
+                        ? 'Select states/UTs (leave empty for all-India)'
+                        : `${selectedRegions.length} selected: ${selectedRegions.join(', ')}`}
+                    </span>
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      {regionsOpen ? '▲' : '▼'}
+                    </span>
+                  </button>
+                  {regionsOpen && (
+                    <div className="max-h-48 overflow-y-auto rounded-md border bg-popover p-2 text-sm shadow-sm">
+                      {INDIAN_STATE_OPTIONS.map((s) => (
+                        <label
+                          key={s.code}
+                          className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 hover:bg-accent"
+                        >
+                          <input
+                            type="checkbox"
+                            className="h-3.5 w-3.5 rounded border-input"
+                            checked={selectedRegions.includes(s.code)}
+                            onChange={() => toggleRegion(s.code)}
+                          />
+                          <span className="font-mono text-xs">{s.code}</span>
+                          <span className="text-xs text-muted-foreground">{s.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   <input

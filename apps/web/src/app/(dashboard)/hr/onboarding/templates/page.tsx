@@ -13,7 +13,10 @@ import {
   useDeleteOnboardingTemplate,
   type OnboardingTemplate,
 } from '@/hooks/use-onboarding';
+import { useDesignations } from '@/hooks/use-hr';
 import { Plus, Trash2 } from 'lucide-react';
+
+const NO_DESIGNATION = '__none__';
 
 interface TaskRow {
   title: string;
@@ -33,16 +36,19 @@ const EMPTY_TASK: TaskRow = {
 
 export default function OnboardingTemplatesPage() {
   const { data: templates, isLoading } = useOnboardingTemplates();
+  const { data: designations } = useDesignations();
   const createMutation = useCreateOnboardingTemplate();
   const deleteMutation = useDeleteOnboardingTemplate();
 
   const [showBuilder, setShowBuilder] = useState(false);
   const [name, setName] = useState('');
+  const [designationId, setDesignationId] = useState<string>(NO_DESIGNATION);
   const [description, setDescription] = useState('');
   const [tasks, setTasks] = useState<TaskRow[]>([{ ...EMPTY_TASK }]);
 
   const reset = () => {
     setName('');
+    setDesignationId(NO_DESIGNATION);
     setDescription('');
     setTasks([{ ...EMPTY_TASK }]);
     setShowBuilder(false);
@@ -53,6 +59,9 @@ export default function OnboardingTemplatesPage() {
     const validTasks = tasks.filter((t) => t.title.trim());
     await createMutation.mutateAsync({
       name,
+      ...(designationId && designationId !== NO_DESIGNATION
+        ? { designationId }
+        : {}),
       description: description || undefined,
       tasks: validTasks.map((t, idx) => ({
         sequence: idx,
@@ -99,6 +108,22 @@ export default function OnboardingTemplatesPage() {
                     onChange={(e) => setName(e.target.value)}
                     placeholder="Standard New Hire"
                   />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="tpl-designation">Designation (optional)</Label>
+                  <select
+                    id="tpl-designation"
+                    className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                    value={designationId}
+                    onChange={(e) => setDesignationId(e.target.value)}
+                  >
+                    <option value={NO_DESIGNATION}>All designations</option>
+                    {(designations ?? []).map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div className="space-y-1.5 md:col-span-2">
                   <Label htmlFor="tpl-desc">Description</Label>
