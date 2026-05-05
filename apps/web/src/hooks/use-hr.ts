@@ -110,9 +110,19 @@ export interface LeaveApplication {
 
 export interface LeaveType {
   id: string;
+  tenantId?: string;
   name: string;
-  maxDays: number;
+  /** Short uppercase code like 'CL' (Casual), 'SL' (Sick), 'EL' (Earned). */
+  code?: string;
+  /** @deprecated kept for back-compat; use `defaultDays` from API. */
+  maxDays?: number;
+  defaultDays: number;
   isPaid: boolean;
+  isCarryForward?: boolean;
+  maxCarryForwardDays?: number;
+  isActive?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface PayrollEntryComponent {
