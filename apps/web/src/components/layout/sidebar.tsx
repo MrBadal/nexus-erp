@@ -365,6 +365,11 @@ const navigation: NavItem[] = [
     title: "Settings",
     href: "/settings",
     icon: Settings,
+    // Settings is admin-only by default. The sidebar's hasAnyPrefix() helper
+    // treats the wildcard '*' permission as a pass, so admins still see it.
+    // Other roles (HR Manager, HR Executive, Accountant, Viewer, Employee)
+    // do not have these prefixes so the group is hidden.
+    requiredPrefix: ['users:', 'roles:', 'settings:'],
     children: [
       { title: "Overview", href: "/settings", icon: Settings },
       { title: "Organization", href: "/settings/organization", icon: Building2 },

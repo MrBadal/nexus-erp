@@ -105,8 +105,16 @@ export function useAuth() {
       const { data } = await api.post<ApiAuthResponse>(endpoints.auth.login, credentials);
       const mapped = mapAuthResponse(data);
       setAuth(mapped.user, mapped.tokens, mapped.tenant, mapped.permissions);
-      // Employee role lands on the self-service portal; everyone else lands on the dashboard.
-      const target = data.user.roleSlug === 'employee' ? '/ess' : '/dashboard';
+      // Role-based landing — show the user the page that's actually relevant
+      // to their role instead of dumping every non-employee onto the generic
+      // finance dashboard.
+      const slug = data.user.roleSlug;
+      const target =
+        slug === 'employee'
+          ? '/ess'
+          : slug === 'hr_manager' || slug === 'hr_executive'
+            ? '/hr'
+            : '/dashboard';
       router.push(target);
       return mapped;
     },

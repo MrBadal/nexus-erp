@@ -22,6 +22,10 @@ export const ROUTE_PERMISSION_MAP: Array<{ prefix: string; required: string[] }>
   { prefix: "/quality", required: ["quality:"] },
   { prefix: "/construction", required: ["construction:"] },
   { prefix: "/helpdesk", required: ["helpdesk:"] },
+  // Settings is admin-only — only the wildcard '*' permission (held by admin)
+  // satisfies these prefixes. Add fine-grained permissions later if needed
+  // (e.g. let accountants edit tax rates with `settings:tax_rates`).
+  { prefix: "/settings", required: ["users:", "roles:", "settings:"] },
 ];
 
 /** Get the required permission prefixes for a pathname, or null if unguarded. */

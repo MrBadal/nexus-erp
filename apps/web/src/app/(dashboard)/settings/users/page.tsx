@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { type ColumnDef } from '@tanstack/react-table';
 import { Shield, Mail } from 'lucide-react';
 import { toast } from 'sonner';
@@ -31,6 +32,7 @@ const statusLabel: Record<string, string> = {
 };
 
 export default function UsersPage() {
+  const router = useRouter();
   const [search, setSearch] = useState('');
   const { data: users, isLoading } = useUsers();
   const { data: roles } = useRoles();
@@ -139,9 +141,12 @@ export default function UsersPage() {
     },
   ];
 
-  const handleRowClick = useCallback((_row: UserRecord) => {
-    // Navigate to user detail if needed
-  }, []);
+  const handleRowClick = useCallback(
+    (row: UserRecord) => {
+      router.push(`/settings/users/${row.id}`);
+    },
+    [router],
+  );
 
   return (
     <ListPage

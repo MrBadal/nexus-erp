@@ -26,7 +26,9 @@ export default function DashboardLayout({
     initialize();
   }, [initialize]);
 
-  // Auth gate: kick out unauthenticated users; route employees to ESS.
+  // Auth gate: kick out unauthenticated users; route employees to ESS;
+  // route HR-only roles away from the generic /dashboard (which shows
+  // finance KPIs) onto their proper landing page /hr.
   React.useEffect(() => {
     if (isLoading) return;
     if (!isAuthenticated) {
@@ -35,8 +37,15 @@ export default function DashboardLayout({
     }
     if (user?.roleSlug === "employee") {
       router.push("/ess");
+      return;
     }
-  }, [isLoading, isAuthenticated, user, router]);
+    if (
+      pathname === "/dashboard" &&
+      (user?.roleSlug === "hr_manager" || user?.roleSlug === "hr_executive")
+    ) {
+      router.replace("/hr");
+    }
+  }, [isLoading, isAuthenticated, user, pathname, router]);
 
   // Permission gate: if the current path requires a permission prefix the user
   // doesn't have, send them back to /dashboard with a toast. Closes the

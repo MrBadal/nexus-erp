@@ -21,6 +21,8 @@ import {
   useUpdateEmployee,
   useDeleteEmployee,
   useDepartments,
+  useDesignations,
+  useEmployees,
   useLeaveApplications,
   useAttendance,
   usePayrollEntries,
@@ -162,6 +164,8 @@ export default function EmployeeDetailPage() {
   const updateMutation = useUpdateEmployee();
   const deleteMutation = useDeleteEmployee();
   const { data: departments } = useDepartments();
+  const { data: designations } = useDesignations();
+  const { data: allEmployees } = useEmployees();
 
   // Editable state
   const [localFirstName, setLocalFirstName] = useState<string | null>(null);
@@ -173,14 +177,20 @@ export default function EmployeeDetailPage() {
   const [localNationalId, setLocalNationalId] = useState<string | null>(null);
   const [localAddress, setLocalAddress] = useState<string | null>(null);
   const [localDepartmentId, setLocalDepartmentId] = useState<string | null>(null);
-  const [localDesignation, setLocalDesignation] = useState<string | null>(null);
+  const [localDesignationId, setLocalDesignationId] = useState<string | null>(null);
+  const [localManagerId, setLocalManagerId] = useState<string | null>(null);
   const [localEmploymentType, setLocalEmploymentType] = useState<string | null>(null);
   const [localDateOfJoining, setLocalDateOfJoining] = useState<string | null>(null);
   const [localDateOfLeaving, setLocalDateOfLeaving] = useState<string | null>(null);
-  const [localSalary, setLocalSalary] = useState<string | null>(null);
-  const [localCurrency, setLocalCurrency] = useState<string | null>(null);
-  const [localBankAccount, setLocalBankAccount] = useState<string | null>(null);
-  const [localTaxId, setLocalTaxId] = useState<string | null>(null);
+  // Indian statutory + bank fields
+  const [localPan, setLocalPan] = useState<string | null>(null);
+  const [localAadhaar, setLocalAadhaar] = useState<string | null>(null);
+  const [localUan, setLocalUan] = useState<string | null>(null);
+  const [localEsic, setLocalEsic] = useState<string | null>(null);
+  const [localTaxRegime, setLocalTaxRegime] = useState<string | null>(null);
+  const [localBankName, setLocalBankName] = useState<string | null>(null);
+  const [localBankAccountNumber, setLocalBankAccountNumber] = useState<string | null>(null);
+  const [localBankIfsc, setLocalBankIfsc] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('leave');
 
   const status: EmployeeStatus = employee?.status ?? 'active';
@@ -194,38 +204,55 @@ export default function EmployeeDetailPage() {
   const currentNationalId = localNationalId ?? employee?.nationalId ?? '';
   const currentAddress = localAddress ?? employee?.address ?? '';
   const currentDepartmentId = localDepartmentId ?? employee?.departmentId ?? '';
-  const currentDesignation = localDesignation ?? employee?.designation ?? '';
+  const currentDesignationId = localDesignationId ?? employee?.designationId ?? '';
+  const currentManagerId = localManagerId ?? employee?.managerId ?? '';
   const currentEmploymentType = localEmploymentType ?? employee?.employmentType ?? 'full_time';
   const currentDateOfJoining = localDateOfJoining ?? employee?.dateOfJoining ?? '';
   const currentDateOfLeaving = localDateOfLeaving ?? '';
-  const currentSalary = localSalary ?? '';
-  const currentCurrency = localCurrency ?? 'INR';
-  const currentBankAccount = localBankAccount ?? '';
-  const currentTaxId = localTaxId ?? '';
+  const currentPan = localPan ?? employee?.panNumber ?? '';
+  const currentAadhaar = localAadhaar ?? employee?.aadhaarNumber ?? '';
+  const currentUan = localUan ?? employee?.uanNumber ?? '';
+  const currentEsic = localEsic ?? employee?.esicNumber ?? '';
+  const currentTaxRegime = localTaxRegime ?? employee?.taxRegime ?? 'new';
+  const currentBankName = localBankName ?? employee?.bankName ?? '';
+  const currentBankAccountNumber = localBankAccountNumber ?? employee?.bankAccountNumber ?? '';
+  const currentBankIfsc = localBankIfsc ?? employee?.bankIfscCode ?? '';
 
   function handleSave() {
     if (!employee) return;
+    // Build payload from DTO-accepted fields only. Empty strings → undefined
+    // so optional checks (UUIDs especially) pass class-validator.
+    const opt = (v: string) => (v.trim() === '' ? undefined : v.trim());
+    const payload: Record<string, unknown> = {
+      firstName: currentFirstName,
+      lastName: currentLastName,
+      email: currentEmail,
+      phone: opt(currentPhone),
+      gender: opt(currentGender),
+      dateOfBirth: opt(currentDateOfBirth),
+      nationalId: opt(currentNationalId),
+      address: opt(currentAddress),
+      departmentId: opt(currentDepartmentId),
+      designationId: opt(currentDesignationId),
+      managerId: opt(currentManagerId),
+      employmentType: currentEmploymentType,
+      dateOfJoining: currentDateOfJoining,
+      // Indian statutory + bank
+      panNumber: opt(currentPan)?.toUpperCase(),
+      aadhaarNumber: opt(currentAadhaar)?.replace(/[\s-]/g, ''),
+      uanNumber: opt(currentUan),
+      esicNumber: opt(currentEsic),
+      taxRegime: currentTaxRegime,
+      bankName: opt(currentBankName),
+      bankAccountNumber: opt(currentBankAccountNumber),
+      bankIfscCode: opt(currentBankIfsc)?.toUpperCase(),
+    };
+    Object.keys(payload).forEach((k) => payload[k] === undefined && delete payload[k]);
     updateMutation.mutate(
-      {
-        id: employeeId,
-        data: {
-          firstName: currentFirstName,
-          lastName: currentLastName,
-          email: currentEmail,
-          phone: currentPhone,
-          gender: currentGender,
-          dateOfBirth: currentDateOfBirth,
-          nationalId: currentNationalId,
-          address: currentAddress,
-          departmentId: currentDepartmentId,
-          designation: currentDesignation,
-          employmentType: currentEmploymentType,
-          dateOfJoining: currentDateOfJoining,
-        },
-      },
+      { id: employeeId, data: payload as never },
       {
         onSuccess: () => toast.success('Employee saved'),
-        onError: () => toast.error('Failed to save employee'),
+        onError: (err: Error) => toast.error(err.message || 'Failed to save employee'),
       },
     );
   }
@@ -375,7 +402,32 @@ export default function EmployeeDetailPage() {
             </Select>
           </FormField>
           <FormField label="Designation">
-            <Input value={currentDesignation} onChange={(e) => setLocalDesignation(e.target.value)} placeholder="Job title / designation" />
+            <Select value={currentDesignationId} onValueChange={(v) => setLocalDesignationId(v)}>
+              <SelectTrigger>
+                <SelectValue placeholder={designations?.length ? 'Select designation' : 'No designations yet'} />
+              </SelectTrigger>
+              <SelectContent>
+                {designations?.map((d) => (
+                  <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FormField>
+          <FormField label="Reports To (Manager)">
+            <Select value={currentManagerId} onValueChange={(v) => setLocalManagerId(v)}>
+              <SelectTrigger>
+                <SelectValue placeholder="None" />
+              </SelectTrigger>
+              <SelectContent>
+                {(allEmployees ?? [])
+                  .filter((m) => m.id !== employeeId)
+                  .map((m) => (
+                    <SelectItem key={m.id} value={m.id}>
+                      {m.firstName} {m.lastName} ({m.employeeId})
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
           </FormField>
           <FormField label="Employment Type">
             <Select value={currentEmploymentType} onValueChange={(v) => setLocalEmploymentType(v)}>
@@ -397,19 +449,76 @@ export default function EmployeeDetailPage() {
           )}
         </FormSection>
 
-        {/* Compensation */}
-        <FormSection title="Compensation" columns={2}>
-          <FormField label="Salary">
-            <Input value={currentSalary} onChange={(e) => setLocalSalary(e.target.value)} placeholder="0.00" type="number" min="0" />
+        {/* Indian Statutory Identifiers */}
+        <FormSection title="Indian Statutory Identifiers" columns={2}>
+          <FormField label="PAN">
+            <Input
+              value={currentPan}
+              onChange={(e) => setLocalPan(e.target.value.toUpperCase())}
+              placeholder="ABCDE1234F"
+              maxLength={10}
+              className="uppercase"
+            />
           </FormField>
-          <FormField label="Currency">
-            <Input value={currentCurrency} onChange={(e) => setLocalCurrency(e.target.value)} placeholder="INR" />
+          <FormField label="Aadhaar">
+            <Input
+              value={currentAadhaar}
+              onChange={(e) => setLocalAadhaar(e.target.value)}
+              placeholder="1234 5678 9012"
+              maxLength={14}
+            />
           </FormField>
-          <FormField label="Bank Account">
-            <Input value={currentBankAccount} onChange={(e) => setLocalBankAccount(e.target.value)} placeholder="Bank account number" />
+          <FormField label="UAN (EPFO)">
+            <Input
+              value={currentUan}
+              onChange={(e) => setLocalUan(e.target.value)}
+              placeholder="100123456789"
+              maxLength={12}
+            />
           </FormField>
-          <FormField label="Tax ID">
-            <Input value={currentTaxId} onChange={(e) => setLocalTaxId(e.target.value)} placeholder="Tax identification number" />
+          <FormField label="ESIC Number">
+            <Input
+              value={currentEsic}
+              onChange={(e) => setLocalEsic(e.target.value)}
+              placeholder="3300123456789012"
+              maxLength={17}
+            />
+          </FormField>
+          <FormField label="Tax Regime">
+            <Select value={currentTaxRegime} onValueChange={(v) => setLocalTaxRegime(v)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="new">New Regime (default)</SelectItem>
+                <SelectItem value="old">Old Regime</SelectItem>
+              </SelectContent>
+            </Select>
+          </FormField>
+        </FormSection>
+
+        {/* Bank Details */}
+        <FormSection title="Bank Details (for salary credit)" columns={2}>
+          <FormField label="Bank Name">
+            <Input
+              value={currentBankName}
+              onChange={(e) => setLocalBankName(e.target.value)}
+              placeholder="HDFC Bank"
+            />
+          </FormField>
+          <FormField label="Account Number">
+            <Input
+              value={currentBankAccountNumber}
+              onChange={(e) => setLocalBankAccountNumber(e.target.value)}
+              placeholder="50100123456789"
+            />
+          </FormField>
+          <FormField label="IFSC Code">
+            <Input
+              value={currentBankIfsc}
+              onChange={(e) => setLocalBankIfsc(e.target.value.toUpperCase())}
+              placeholder="HDFC0001234"
+              maxLength={11}
+              className="uppercase"
+            />
           </FormField>
         </FormSection>
 
