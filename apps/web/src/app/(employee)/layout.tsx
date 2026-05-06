@@ -16,6 +16,10 @@ import {
   FolderOpen,
   Megaphone,
   Target,
+  GraduationCap,
+  Briefcase,
+  Users as UsersFamily,
+  Sparkles,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth.store';
 import { cn } from '@/lib/utils';
@@ -36,6 +40,10 @@ const navItems: NavItem[] = [
   { label: 'Payslips', href: '/ess/payslips', icon: Wallet },
   { label: 'Expenses', href: '/ess/expenses', icon: Receipt },
   { label: 'My Documents', href: '/ess/documents', icon: FolderOpen },
+  { label: 'Education', href: '/ess/education', icon: GraduationCap },
+  { label: 'Experience', href: '/ess/experience', icon: Briefcase },
+  { label: 'Family', href: '/ess/family', icon: UsersFamily },
+  { label: 'Skills', href: '/ess/skills', icon: Sparkles },
   { label: 'My Performance', href: '/ess/performance', icon: Target },
   { label: 'Announcements', href: '/ess/announcements', icon: Megaphone },
   { label: 'My Team', href: '/ess/team', icon: Users },

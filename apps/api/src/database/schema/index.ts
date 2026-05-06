@@ -37,3 +37,4 @@ export * from './hr-onboarding';
 export * from './hr-asset-assignment';
 export * from './hr-shifts';
 export * from './hr-statutory';
+export * from './hr-personal';

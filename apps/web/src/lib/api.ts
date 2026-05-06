@@ -892,6 +892,48 @@ export const endpoints = {
     create: '/retention/legal-holds',
     release: (id: string) => `/retention/legal-holds/${id}/release`,
   },
+
+  // ─── HR personal data: education, experience, family, skills ───
+  employeeEducation: {
+    list: '/hr/employee-education',
+    get: (id: string) => `/hr/employee-education/${id}`,
+    create: '/hr/employee-education',
+    update: (id: string) => `/hr/employee-education/${id}`,
+    delete: (id: string) => `/hr/employee-education/${id}`,
+    mine: '/ess/education',
+    mineUpdate: (id: string) => `/ess/education/${id}`,
+    mineDelete: (id: string) => `/ess/education/${id}`,
+  },
+  employeeExperience: {
+    list: '/hr/employee-experience',
+    get: (id: string) => `/hr/employee-experience/${id}`,
+    create: '/hr/employee-experience',
+    update: (id: string) => `/hr/employee-experience/${id}`,
+    delete: (id: string) => `/hr/employee-experience/${id}`,
+    mine: '/ess/experience',
+    mineUpdate: (id: string) => `/ess/experience/${id}`,
+    mineDelete: (id: string) => `/ess/experience/${id}`,
+  },
+  employeeFamily: {
+    list: '/hr/employee-family',
+    get: (id: string) => `/hr/employee-family/${id}`,
+    create: '/hr/employee-family',
+    update: (id: string) => `/hr/employee-family/${id}`,
+    delete: (id: string) => `/hr/employee-family/${id}`,
+    mine: '/ess/family',
+    mineUpdate: (id: string) => `/ess/family/${id}`,
+    mineDelete: (id: string) => `/ess/family/${id}`,
+  },
+  employeeSkills: {
+    list: '/hr/employee-skills',
+    get: (id: string) => `/hr/employee-skills/${id}`,
+    create: '/hr/employee-skills',
+    update: (id: string) => `/hr/employee-skills/${id}`,
+    delete: (id: string) => `/hr/employee-skills/${id}`,
+    mine: '/ess/skills',
+    mineUpdate: (id: string) => `/ess/skills/${id}`,
+    mineDelete: (id: string) => `/ess/skills/${id}`,
+  },
 };
 
 export default api;

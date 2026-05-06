@@ -54,6 +54,10 @@ import { PerformanceModule } from './modules/hr/performance/performance.module.j
 import { Form16Module } from './modules/hr/form-16/form-16.module.js';
 import { GratuityModule } from './modules/hr/gratuity/gratuity.module.js';
 import { StatutoryReportsModule } from './modules/hr/statutory-reports/statutory-reports.module.js';
+import { EmployeeEducationModule } from './modules/hr/employee-education/employee-education.module.js';
+import { EmployeeExperienceModule } from './modules/hr/employee-experience/employee-experience.module.js';
+import { EmployeeFamilyModule } from './modules/hr/employee-family/employee-family.module.js';
+import { EmployeeSkillModule } from './modules/hr/employee-skill/employee-skill.module.js';
 
 @Module({
   imports: [
@@ -121,6 +125,10 @@ import { StatutoryReportsModule } from './modules/hr/statutory-reports/statutory
     Form16Module,
     GratuityModule,
     StatutoryReportsModule,
+    EmployeeEducationModule,
+    EmployeeExperienceModule,
+    EmployeeFamilyModule,
+    EmployeeSkillModule,
   ],
 })
 export class AppModule implements NestModule {

@@ -37,6 +37,32 @@ import {
   EMPLOYEE_DOCUMENT_TYPE_LABELS,
   type EmployeeDocumentType,
 } from '@/hooks/use-employee-documents';
+import {
+  useEmployeeEducation,
+  useCreateEmployeeEducation,
+  useDeleteEmployeeEducation,
+} from '@/hooks/use-employee-education';
+import {
+  useEmployeeExperience,
+  useCreateEmployeeExperience,
+  useDeleteEmployeeExperience,
+} from '@/hooks/use-employee-experience';
+import {
+  useEmployeeFamily,
+  useCreateEmployeeFamily,
+  useDeleteEmployeeFamily,
+  EMPLOYEE_FAMILY_RELATIONSHIPS,
+  EMPLOYEE_FAMILY_RELATIONSHIP_LABELS,
+  type EmployeeFamilyRelationship,
+} from '@/hooks/use-employee-family';
+import {
+  useEmployeeSkills,
+  useCreateEmployeeSkill,
+  useDeleteEmployeeSkill,
+  EMPLOYEE_SKILL_PROFICIENCIES,
+  EMPLOYEE_SKILL_PROFICIENCY_LABELS,
+  type EmployeeSkillProficiency,
+} from '@/hooks/use-employee-skills';
 import { formatDate } from '@/lib/utils';
 
 // ---------------------------------------------------------------------------
@@ -312,6 +338,637 @@ function PayrollTab({ employeeId }: { employeeId: string }) {
         ))}
       </tbody>
     </table>
+  );
+}
+
+function EducationTab({ employeeId }: { employeeId: string }) {
+  const { data, isLoading } = useEmployeeEducation({ employeeId });
+  const createMut = useCreateEmployeeEducation();
+  const deleteMut = useDeleteEmployeeEducation();
+  const [form, setForm] = useState({
+    degree: '',
+    institution: '',
+    fieldOfStudy: '',
+    startYear: '',
+    endYear: '',
+    grade: '',
+    notes: '',
+  });
+
+  const handleAdd = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.degree.trim() || !form.institution.trim() || !form.startYear.trim()) {
+      toast.error('Degree, institution, and start year are required');
+      return;
+    }
+    const startYear = Number(form.startYear);
+    if (!Number.isInteger(startYear) || startYear < 1900 || startYear > 2100) {
+      toast.error('Start year must be between 1900 and 2100');
+      return;
+    }
+    let endYear: number | undefined;
+    if (form.endYear.trim()) {
+      endYear = Number(form.endYear);
+      if (!Number.isInteger(endYear) || endYear < 1900 || endYear > 2100) {
+        toast.error('End year must be between 1900 and 2100');
+        return;
+      }
+    }
+    createMut.mutate(
+      {
+        employeeId,
+        degree: form.degree.trim(),
+        institution: form.institution.trim(),
+        fieldOfStudy: form.fieldOfStudy.trim() || undefined,
+        startYear,
+        endYear,
+        grade: form.grade.trim() || undefined,
+        notes: form.notes.trim() || undefined,
+      },
+      {
+        onSuccess: () => {
+          toast.success('Education added');
+          setForm({ degree: '', institution: '', fieldOfStudy: '', startYear: '', endYear: '', grade: '', notes: '' });
+        },
+        onError: (err: Error) => toast.error(err.message || 'Failed'),
+      },
+    );
+  };
+
+  const entries = data ?? [];
+
+  return (
+    <div className="space-y-4 p-4">
+      <form onSubmit={handleAdd} className="grid gap-3 rounded-md border bg-muted/20 p-4 md:grid-cols-2">
+        <div className="md:col-span-2 text-sm font-medium">Add education entry</div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium">Degree *</label>
+          <Input value={form.degree} onChange={(e) => setForm((f) => ({ ...f, degree: e.target.value }))} placeholder="e.g. B.Tech" />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium">Institution *</label>
+          <Input value={form.institution} onChange={(e) => setForm((f) => ({ ...f, institution: e.target.value }))} placeholder="e.g. IIT Delhi" />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium">Field of Study</label>
+          <Input value={form.fieldOfStudy} onChange={(e) => setForm((f) => ({ ...f, fieldOfStudy: e.target.value }))} placeholder="e.g. Computer Science" />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium">Grade</label>
+          <Input value={form.grade} onChange={(e) => setForm((f) => ({ ...f, grade: e.target.value }))} placeholder="e.g. 8.5 CGPA" />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium">Start Year *</label>
+          <Input type="number" min={1900} max={2100} value={form.startYear} onChange={(e) => setForm((f) => ({ ...f, startYear: e.target.value }))} />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium">End Year</label>
+          <Input type="number" min={1900} max={2100} value={form.endYear} onChange={(e) => setForm((f) => ({ ...f, endYear: e.target.value }))} placeholder="Leave blank if ongoing" />
+        </div>
+        <div className="space-y-1 md:col-span-2">
+          <label className="text-xs font-medium">Notes</label>
+          <Input value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} />
+        </div>
+        <div className="md:col-span-2 flex justify-end">
+          <Button type="submit" disabled={createMut.isPending}>
+            {createMut.isPending ? 'Adding…' : 'Add entry'}
+          </Button>
+        </div>
+      </form>
+
+      {isLoading ? (
+        <p className="p-4 text-sm text-muted-foreground">Loading…</p>
+      ) : entries.length === 0 ? (
+        <p className="p-4 text-sm text-muted-foreground">No education entries yet for this employee.</p>
+      ) : (
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b bg-muted/50 text-left text-xs font-medium uppercase text-muted-foreground">
+              <th className="px-4 py-2">Degree</th>
+              <th className="px-4 py-2">Institution</th>
+              <th className="px-4 py-2">Field</th>
+              <th className="px-4 py-2">Years</th>
+              <th className="px-4 py-2">Grade</th>
+              <th className="px-4 py-2 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {entries.map((e) => (
+              <tr key={e.id} className="border-b last:border-0">
+                <td className="px-4 py-2 font-medium">{e.degree}</td>
+                <td className="px-4 py-2">{e.institution}</td>
+                <td className="px-4 py-2 text-muted-foreground">{e.fieldOfStudy ?? '—'}</td>
+                <td className="px-4 py-2 tabular-nums">{e.startYear} – {e.endYear ?? 'Present'}</td>
+                <td className="px-4 py-2 text-muted-foreground">{e.grade ?? '—'}</td>
+                <td className="px-4 py-2 text-right">
+                  <button
+                    onClick={() => {
+                      if (confirm(`Delete "${e.degree}"?`)) {
+                        deleteMut.mutate(e.id, {
+                          onSuccess: () => toast.success('Education removed'),
+                          onError: (err: Error) => toast.error(err.message || 'Failed'),
+                        });
+                      }
+                    }}
+                    className="text-xs text-destructive underline"
+                  >
+                    Remove
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+function ExperienceTab({ employeeId }: { employeeId: string }) {
+  const { data, isLoading } = useEmployeeExperience({ employeeId });
+  const createMut = useCreateEmployeeExperience();
+  const deleteMut = useDeleteEmployeeExperience();
+  const [form, setForm] = useState({
+    companyName: '',
+    title: '',
+    fromDate: '',
+    toDate: '',
+    employmentType: '',
+    description: '',
+  });
+
+  const handleAdd = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.companyName.trim() || !form.title.trim() || !form.fromDate) {
+      toast.error('Company, title, and start date are required');
+      return;
+    }
+    createMut.mutate(
+      {
+        employeeId,
+        companyName: form.companyName.trim(),
+        title: form.title.trim(),
+        fromDate: form.fromDate,
+        toDate: form.toDate || undefined,
+        employmentType: form.employmentType.trim() || undefined,
+        description: form.description.trim() || undefined,
+      },
+      {
+        onSuccess: () => {
+          toast.success('Experience added');
+          setForm({ companyName: '', title: '', fromDate: '', toDate: '', employmentType: '', description: '' });
+        },
+        onError: (err: Error) => toast.error(err.message || 'Failed'),
+      },
+    );
+  };
+
+  const entries = data ?? [];
+
+  return (
+    <div className="space-y-4 p-4">
+      <form onSubmit={handleAdd} className="grid gap-3 rounded-md border bg-muted/20 p-4 md:grid-cols-2">
+        <div className="md:col-span-2 text-sm font-medium">Add work experience</div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium">Company *</label>
+          <Input value={form.companyName} onChange={(e) => setForm((f) => ({ ...f, companyName: e.target.value }))} />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium">Title *</label>
+          <Input value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium">From *</label>
+          <Input type="date" value={form.fromDate} onChange={(e) => setForm((f) => ({ ...f, fromDate: e.target.value }))} />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium">To</label>
+          <Input type="date" value={form.toDate} onChange={(e) => setForm((f) => ({ ...f, toDate: e.target.value }))} placeholder="Leave blank if current" />
+        </div>
+        <div className="space-y-1 md:col-span-2">
+          <label className="text-xs font-medium">Employment Type</label>
+          <Input value={form.employmentType} onChange={(e) => setForm((f) => ({ ...f, employmentType: e.target.value }))} placeholder="e.g. full_time, contract" />
+        </div>
+        <div className="space-y-1 md:col-span-2">
+          <label className="text-xs font-medium">Description</label>
+          <Input value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} />
+        </div>
+        <div className="md:col-span-2 flex justify-end">
+          <Button type="submit" disabled={createMut.isPending}>
+            {createMut.isPending ? 'Adding…' : 'Add entry'}
+          </Button>
+        </div>
+      </form>
+
+      {isLoading ? (
+        <p className="p-4 text-sm text-muted-foreground">Loading…</p>
+      ) : entries.length === 0 ? (
+        <p className="p-4 text-sm text-muted-foreground">No experience entries yet for this employee.</p>
+      ) : (
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b bg-muted/50 text-left text-xs font-medium uppercase text-muted-foreground">
+              <th className="px-4 py-2">Title</th>
+              <th className="px-4 py-2">Company</th>
+              <th className="px-4 py-2">Period</th>
+              <th className="px-4 py-2">Type</th>
+              <th className="px-4 py-2 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {entries.map((e) => (
+              <tr key={e.id} className="border-b last:border-0">
+                <td className="px-4 py-2">
+                  <div className="font-medium">{e.title}</div>
+                  {e.description && <div className="text-xs text-muted-foreground line-clamp-1">{e.description}</div>}
+                </td>
+                <td className="px-4 py-2">{e.companyName}</td>
+                <td className="px-4 py-2 text-muted-foreground">
+                  {formatDate(e.fromDate)} – {e.toDate ? formatDate(e.toDate) : 'Present'}
+                </td>
+                <td className="px-4 py-2 capitalize text-muted-foreground">
+                  {e.employmentType ? e.employmentType.replace(/_/g, ' ') : '—'}
+                </td>
+                <td className="px-4 py-2 text-right">
+                  <button
+                    onClick={() => {
+                      if (confirm(`Delete "${e.title} @ ${e.companyName}"?`)) {
+                        deleteMut.mutate(e.id, {
+                          onSuccess: () => toast.success('Experience removed'),
+                          onError: (err: Error) => toast.error(err.message || 'Failed'),
+                        });
+                      }
+                    }}
+                    className="text-xs text-destructive underline"
+                  >
+                    Remove
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+function FamilyTab({ employeeId }: { employeeId: string }) {
+  const { data, isLoading } = useEmployeeFamily({ employeeId });
+  const createMut = useCreateEmployeeFamily();
+  const deleteMut = useDeleteEmployeeFamily();
+  const [form, setForm] = useState<{
+    name: string;
+    relationship: EmployeeFamilyRelationship;
+    dateOfBirth: string;
+    nominee: boolean;
+    nomineeSharePercent: string;
+    aadhaarNumber: string;
+    contactPhone: string;
+    notes: string;
+  }>({
+    name: '',
+    relationship: 'spouse',
+    dateOfBirth: '',
+    nominee: false,
+    nomineeSharePercent: '',
+    aadhaarNumber: '',
+    contactPhone: '',
+    notes: '',
+  });
+
+  const handleAdd = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.name.trim()) {
+      toast.error('Name is required');
+      return;
+    }
+    let nomineeSharePercent: number | undefined;
+    if (form.nomineeSharePercent.trim()) {
+      nomineeSharePercent = Number(form.nomineeSharePercent);
+      if (!Number.isInteger(nomineeSharePercent) || nomineeSharePercent < 0 || nomineeSharePercent > 100) {
+        toast.error('Nominee share must be 0–100');
+        return;
+      }
+    }
+    const aadhaar = form.aadhaarNumber.replace(/[\s-]/g, '');
+    if (aadhaar && !/^[2-9][0-9]{11}$/.test(aadhaar)) {
+      toast.error('Aadhaar must be 12 digits and not start with 0 or 1');
+      return;
+    }
+    createMut.mutate(
+      {
+        employeeId,
+        name: form.name.trim(),
+        relationship: form.relationship,
+        dateOfBirth: form.dateOfBirth || undefined,
+        nominee: form.nominee,
+        nomineeSharePercent,
+        aadhaarNumber: aadhaar || undefined,
+        contactPhone: form.contactPhone.trim() || undefined,
+        notes: form.notes.trim() || undefined,
+      },
+      {
+        onSuccess: () => {
+          toast.success('Family entry added');
+          setForm({
+            name: '',
+            relationship: 'spouse',
+            dateOfBirth: '',
+            nominee: false,
+            nomineeSharePercent: '',
+            aadhaarNumber: '',
+            contactPhone: '',
+            notes: '',
+          });
+        },
+        onError: (err: Error) => toast.error(err.message || 'Failed'),
+      },
+    );
+  };
+
+  const entries = data ?? [];
+
+  return (
+    <div className="space-y-4 p-4">
+      <form onSubmit={handleAdd} className="grid gap-3 rounded-md border bg-muted/20 p-4 md:grid-cols-2">
+        <div className="md:col-span-2 text-sm font-medium">Add family / nominee entry</div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium">Name *</label>
+          <Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium">Relationship *</label>
+          <Select value={form.relationship} onValueChange={(v) => setForm((f) => ({ ...f, relationship: v as EmployeeFamilyRelationship }))}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {EMPLOYEE_FAMILY_RELATIONSHIPS.map((r) => (
+                <SelectItem key={r} value={r}>{EMPLOYEE_FAMILY_RELATIONSHIP_LABELS[r]}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium">Date of Birth</label>
+          <Input type="date" value={form.dateOfBirth} onChange={(e) => setForm((f) => ({ ...f, dateOfBirth: e.target.value }))} />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium">Contact Phone</label>
+          <Input value={form.contactPhone} onChange={(e) => setForm((f) => ({ ...f, contactPhone: e.target.value }))} />
+        </div>
+        <div className="space-y-1 md:col-span-2">
+          <label className="text-xs font-medium">Aadhaar</label>
+          <Input value={form.aadhaarNumber} onChange={(e) => setForm((f) => ({ ...f, aadhaarNumber: e.target.value }))} maxLength={14} />
+        </div>
+        <label className="flex items-center gap-2 text-sm md:col-span-2">
+          <input type="checkbox" checked={form.nominee} onChange={(e) => setForm((f) => ({ ...f, nominee: e.target.checked }))} />
+          Nominee for benefits
+        </label>
+        {form.nominee && (
+          <div className="space-y-1 md:col-span-2">
+            <label className="text-xs font-medium">Nominee share (%)</label>
+            <Input type="number" min={0} max={100} value={form.nomineeSharePercent} onChange={(e) => setForm((f) => ({ ...f, nomineeSharePercent: e.target.value }))} />
+          </div>
+        )}
+        <div className="space-y-1 md:col-span-2">
+          <label className="text-xs font-medium">Notes</label>
+          <Input value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} />
+        </div>
+        <div className="md:col-span-2 flex justify-end">
+          <Button type="submit" disabled={createMut.isPending}>
+            {createMut.isPending ? 'Adding…' : 'Add entry'}
+          </Button>
+        </div>
+      </form>
+
+      {isLoading ? (
+        <p className="p-4 text-sm text-muted-foreground">Loading…</p>
+      ) : entries.length === 0 ? (
+        <p className="p-4 text-sm text-muted-foreground">No family entries yet for this employee.</p>
+      ) : (
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b bg-muted/50 text-left text-xs font-medium uppercase text-muted-foreground">
+              <th className="px-4 py-2">Name</th>
+              <th className="px-4 py-2">Relationship</th>
+              <th className="px-4 py-2">Date of Birth</th>
+              <th className="px-4 py-2">Phone</th>
+              <th className="px-4 py-2">Nominee</th>
+              <th className="px-4 py-2 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {entries.map((e) => (
+              <tr key={e.id} className="border-b last:border-0">
+                <td className="px-4 py-2 font-medium">{e.name}</td>
+                <td className="px-4 py-2">{EMPLOYEE_FAMILY_RELATIONSHIP_LABELS[e.relationship]}</td>
+                <td className="px-4 py-2 text-muted-foreground">{e.dateOfBirth ? formatDate(e.dateOfBirth) : '—'}</td>
+                <td className="px-4 py-2 text-muted-foreground">{e.contactPhone ?? '—'}</td>
+                <td className="px-4 py-2">{e.nominee ? `Yes${e.nomineeSharePercent !== null ? ` · ${e.nomineeSharePercent}%` : ''}` : '—'}</td>
+                <td className="px-4 py-2 text-right">
+                  <button
+                    onClick={() => {
+                      if (confirm(`Delete "${e.name}"?`)) {
+                        deleteMut.mutate(e.id, {
+                          onSuccess: () => toast.success('Entry removed'),
+                          onError: (err: Error) => toast.error(err.message || 'Failed'),
+                        });
+                      }
+                    }}
+                    className="text-xs text-destructive underline"
+                  >
+                    Remove
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+function SkillsTab({ employeeId }: { employeeId: string }) {
+  const { data, isLoading } = useEmployeeSkills({ employeeId });
+  const createMut = useCreateEmployeeSkill();
+  const deleteMut = useDeleteEmployeeSkill();
+  const [form, setForm] = useState<{
+    skill: string;
+    category: string;
+    proficiency: EmployeeSkillProficiency;
+    yearsOfExperience: string;
+    certificationName: string;
+    certificationIssuer: string;
+    certificationDate: string;
+    certificationExpiresAt: string;
+    notes: string;
+  }>({
+    skill: '',
+    category: '',
+    proficiency: 'intermediate',
+    yearsOfExperience: '',
+    certificationName: '',
+    certificationIssuer: '',
+    certificationDate: '',
+    certificationExpiresAt: '',
+    notes: '',
+  });
+
+  const handleAdd = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.skill.trim()) {
+      toast.error('Skill name is required');
+      return;
+    }
+    if (form.yearsOfExperience.trim()) {
+      const yrs = Number(form.yearsOfExperience);
+      if (Number.isNaN(yrs) || yrs < 0 || yrs > 99) {
+        toast.error('Years of experience must be a number between 0 and 99');
+        return;
+      }
+    }
+    createMut.mutate(
+      {
+        employeeId,
+        skill: form.skill.trim(),
+        category: form.category.trim() || undefined,
+        proficiency: form.proficiency,
+        yearsOfExperience: form.yearsOfExperience.trim() || undefined,
+        certificationName: form.certificationName.trim() || undefined,
+        certificationIssuer: form.certificationIssuer.trim() || undefined,
+        certificationDate: form.certificationDate || undefined,
+        certificationExpiresAt: form.certificationExpiresAt || undefined,
+        notes: form.notes.trim() || undefined,
+      },
+      {
+        onSuccess: () => {
+          toast.success('Skill added');
+          setForm({
+            skill: '',
+            category: '',
+            proficiency: 'intermediate',
+            yearsOfExperience: '',
+            certificationName: '',
+            certificationIssuer: '',
+            certificationDate: '',
+            certificationExpiresAt: '',
+            notes: '',
+          });
+        },
+        onError: (err: Error) => toast.error(err.message || 'Failed'),
+      },
+    );
+  };
+
+  const entries = data ?? [];
+
+  return (
+    <div className="space-y-4 p-4">
+      <form onSubmit={handleAdd} className="grid gap-3 rounded-md border bg-muted/20 p-4 md:grid-cols-2">
+        <div className="md:col-span-2 text-sm font-medium">Add skill / certification</div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium">Skill *</label>
+          <Input value={form.skill} onChange={(e) => setForm((f) => ({ ...f, skill: e.target.value }))} />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium">Category</label>
+          <Input value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))} />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium">Proficiency *</label>
+          <Select value={form.proficiency} onValueChange={(v) => setForm((f) => ({ ...f, proficiency: v as EmployeeSkillProficiency }))}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {EMPLOYEE_SKILL_PROFICIENCIES.map((p) => (
+                <SelectItem key={p} value={p}>{EMPLOYEE_SKILL_PROFICIENCY_LABELS[p]}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium">Years of Experience</label>
+          <Input type="number" min={0} max={99} step="0.5" value={form.yearsOfExperience} onChange={(e) => setForm((f) => ({ ...f, yearsOfExperience: e.target.value }))} />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium">Certification Name</label>
+          <Input value={form.certificationName} onChange={(e) => setForm((f) => ({ ...f, certificationName: e.target.value }))} />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium">Issuer</label>
+          <Input value={form.certificationIssuer} onChange={(e) => setForm((f) => ({ ...f, certificationIssuer: e.target.value }))} />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium">Issued On</label>
+          <Input type="date" value={form.certificationDate} onChange={(e) => setForm((f) => ({ ...f, certificationDate: e.target.value }))} />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium">Expires On</label>
+          <Input type="date" value={form.certificationExpiresAt} onChange={(e) => setForm((f) => ({ ...f, certificationExpiresAt: e.target.value }))} />
+        </div>
+        <div className="space-y-1 md:col-span-2">
+          <label className="text-xs font-medium">Notes</label>
+          <Input value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} />
+        </div>
+        <div className="md:col-span-2 flex justify-end">
+          <Button type="submit" disabled={createMut.isPending}>
+            {createMut.isPending ? 'Adding…' : 'Add skill'}
+          </Button>
+        </div>
+      </form>
+
+      {isLoading ? (
+        <p className="p-4 text-sm text-muted-foreground">Loading…</p>
+      ) : entries.length === 0 ? (
+        <p className="p-4 text-sm text-muted-foreground">No skills yet for this employee.</p>
+      ) : (
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b bg-muted/50 text-left text-xs font-medium uppercase text-muted-foreground">
+              <th className="px-4 py-2">Skill</th>
+              <th className="px-4 py-2">Category</th>
+              <th className="px-4 py-2">Proficiency</th>
+              <th className="px-4 py-2">Years</th>
+              <th className="px-4 py-2">Certification</th>
+              <th className="px-4 py-2 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {entries.map((e) => (
+              <tr key={e.id} className="border-b last:border-0">
+                <td className="px-4 py-2 font-medium">{e.skill}</td>
+                <td className="px-4 py-2 text-muted-foreground">{e.category ?? '—'}</td>
+                <td className="px-4 py-2">{EMPLOYEE_SKILL_PROFICIENCY_LABELS[e.proficiency]}</td>
+                <td className="px-4 py-2 tabular-nums text-muted-foreground">{e.yearsOfExperience ?? '—'}</td>
+                <td className="px-4 py-2 text-muted-foreground">
+                  {e.certificationName ? (
+                    <div>
+                      <div>{e.certificationName}</div>
+                      {e.certificationIssuer && <div className="text-xs">{e.certificationIssuer}</div>}
+                    </div>
+                  ) : '—'}
+                </td>
+                <td className="px-4 py-2 text-right">
+                  <button
+                    onClick={() => {
+                      if (confirm(`Delete "${e.skill}"?`)) {
+                        deleteMut.mutate(e.id, {
+                          onSuccess: () => toast.success('Skill removed'),
+                          onError: (err: Error) => toast.error(err.message || 'Failed'),
+                        });
+                      }
+                    }}
+                    className="text-xs text-destructive underline"
+                  >
+                    Remove
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
   );
 }
 
@@ -728,6 +1385,10 @@ export default function EmployeeDetailPage() {
           <div className="flex border-b bg-muted/30">
             {[
               { key: 'documents', label: 'Documents' },
+              { key: 'education', label: 'Education' },
+              { key: 'experience', label: 'Experience' },
+              { key: 'family', label: 'Family' },
+              { key: 'skills', label: 'Skills' },
               { key: 'leave', label: 'Leave Applications' },
               { key: 'attendance', label: 'Attendance' },
               { key: 'payroll', label: 'Payroll' },
@@ -742,6 +1403,10 @@ export default function EmployeeDetailPage() {
           </div>
           <div>
             {activeTab === 'documents' && <DocumentsTab employeeId={employeeId} />}
+            {activeTab === 'education' && <EducationTab employeeId={employeeId} />}
+            {activeTab === 'experience' && <ExperienceTab employeeId={employeeId} />}
+            {activeTab === 'family' && <FamilyTab employeeId={employeeId} />}
+            {activeTab === 'skills' && <SkillsTab employeeId={employeeId} />}
             {activeTab === 'leave' && <LeaveTab employeeId={employeeId} />}
             {activeTab === 'attendance' && <AttendanceTab employeeId={employeeId} />}
             {activeTab === 'payroll' && <PayrollTab employeeId={employeeId} />}
