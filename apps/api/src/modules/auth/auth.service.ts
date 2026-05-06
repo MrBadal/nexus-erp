@@ -170,6 +170,9 @@ export class AuthService {
 
     return {
       ...tokens,
+      // Top-level permissions list so the frontend auth store can populate
+      // `nexus_permissions` localStorage and the sidebar/route guard work.
+      permissions: userPermissions,
       user: {
         id: user.id,
         email: user.email,
@@ -250,6 +253,8 @@ export class AuthService {
       permissions: ['*'],
       firstName: user.firstName,
       lastName: user.lastName,
+      employeeId: null,
+      roleSlug: 'admin',
     });
 
     this.eventEmitter.emit('auth.register', {
@@ -260,6 +265,10 @@ export class AuthService {
 
     return {
       ...tokens,
+      // Mirrors login(): top-level permissions + roleSlug/employeeId on user object
+      // so the frontend auth store gets a fully-populated session and the sidebar
+      // shows the admin's full module set immediately after signup.
+      permissions: ['*'],
       user: {
         id: user.id,
         email: user.email,
@@ -268,6 +277,8 @@ export class AuthService {
         tenantId: tenant.id,
         tenantName: tenant.name,
         tenantSlug: tenant.slug,
+        roleSlug: 'admin',
+        employeeId: null,
       },
     };
   }

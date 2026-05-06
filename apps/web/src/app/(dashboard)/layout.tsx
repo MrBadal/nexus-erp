@@ -1,10 +1,15 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
+import { toast } from "sonner";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { useAuthStore } from "@/stores/auth.store";
+import {
+  getRequiredPrefixesForPath,
+  hasAnyPermissionPrefix,
+} from "@/lib/route-permissions";
 
 export default function DashboardLayout({
   children,
@@ -12,20 +17,49 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const { isAuthenticated, isLoading, initialize, user } = useAuthStore();
+  // Subscribe to the raw permissions reference (stable until store update).
+  const rawPerms = useAuthStore((s) => s.permissions);
 
   React.useEffect(() => {
     initialize();
   }, [initialize]);
 
+  // Auth gate: kick out unauthenticated users; route employees to ESS.
   React.useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
+    if (isLoading) return;
+    if (!isAuthenticated) {
       router.push("/login");
-    } else if (!isLoading && isAuthenticated && user?.roleSlug === 'employee') {
-      // Employees cannot access internal dashboard — redirect to ESS portal.
+      return;
+    }
+    if (user?.roleSlug === "employee") {
       router.push("/ess");
     }
   }, [isLoading, isAuthenticated, user, router]);
+
+  // Permission gate: if the current path requires a permission prefix the user
+  // doesn't have, send them back to /dashboard with a toast. Closes the
+  // search-bar / URL-typing bypass while sidebar is permission-filtered.
+  const userPerms = React.useMemo<string[]>(() => {
+    return (rawPerms as unknown as Array<string | { module?: string; resource?: string }>)
+      .map((p) =>
+        typeof p === "string" ? p : `${p.module ?? ""}:${p.resource ?? ""}`,
+      );
+  }, [rawPerms]);
+  const isAdmin =
+    user?.roleSlug === "admin" || userPerms.includes("*");
+
+  React.useEffect(() => {
+    if (isLoading || !isAuthenticated) return;
+    if (isAdmin) return; // admins reach everything
+    const required = getRequiredPrefixesForPath(pathname);
+    if (!required) return; // path is unguarded
+    if (!hasAnyPermissionPrefix(userPerms, required)) {
+      toast.error("You don't have access to that section");
+      router.replace("/dashboard");
+    }
+  }, [pathname, isLoading, isAuthenticated, isAdmin, userPerms, router]);
 
   if (isLoading) {
     return (

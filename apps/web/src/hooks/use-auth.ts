@@ -20,6 +20,9 @@ interface ApiAuthResponse {
   refreshToken: string;
   tokenType: string;
   expiresIn: string;
+  /** Flat permission strings for the user's role, e.g. ['hr:read', 'hr:write']
+   * or ['*'] for admin. Source of truth for sidebar filtering and route guard. */
+  permissions?: string[];
   user: {
     id: string;
     email: string;
@@ -77,6 +80,9 @@ function mapAuthResponse(data: ApiAuthResponse) {
       createdAt: now,
       updatedAt: now,
     },
+    // Flat string array as returned by the API. The auth store stores this in
+    // `permissions` and the sidebar/route guard read from there.
+    permissions: (data.permissions ?? []) as unknown as import('@/types/api').Permission[],
   };
 }
 
@@ -98,7 +104,7 @@ export function useAuth() {
     async (credentials: LoginRequest) => {
       const { data } = await api.post<ApiAuthResponse>(endpoints.auth.login, credentials);
       const mapped = mapAuthResponse(data);
-      setAuth(mapped.user, mapped.tokens, mapped.tenant);
+      setAuth(mapped.user, mapped.tokens, mapped.tenant, mapped.permissions);
       // Employee role lands on the self-service portal; everyone else lands on the dashboard.
       const target = data.user.roleSlug === 'employee' ? '/ess' : '/dashboard';
       router.push(target);
@@ -120,7 +126,7 @@ export function useAuth() {
     }) => {
       const { data: responseData } = await api.post<ApiAuthResponse>(endpoints.auth.register, data);
       const mapped = mapAuthResponse(responseData);
-      setAuth(mapped.user, mapped.tokens, mapped.tenant);
+      setAuth(mapped.user, mapped.tokens, mapped.tenant, mapped.permissions);
       router.push("/dashboard");
       return mapped;
     },
