@@ -71,6 +71,7 @@ import {
   GraduationCap,
   FolderOpen,
   BadgeIndianRupee,
+  Mail,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -378,6 +379,7 @@ const navigation: NavItem[] = [
       { title: "Tax Rates", href: "/settings/tax-rates", icon: Receipt },
       { title: "TDS Sections", href: "/settings/tds-sections", icon: FileText },
       { title: "Number Series", href: "/settings/number-series", icon: FileText },
+      { title: "Email (SMTP)", href: "/settings/smtp", icon: Mail },
       { title: "Currencies", href: "/settings/currencies", icon: DollarSign },
       { title: "Fiscal Periods", href: "/settings/fiscal-periods", icon: Calendar },
       { title: "Approval Workflows", href: "/settings/approval-workflows", icon: ClipboardCheck },

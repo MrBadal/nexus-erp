@@ -272,6 +272,15 @@ export class ExpenseClaimService {
       .set(updates)
       .where(eq(expenseClaims.id, id));
 
+    if (status === 'approved' || status === 'rejected') {
+      this.eventEmitter.emit('hr.expense.decided', {
+        tenantId,
+        employeeId: existing.employeeId,
+        decision: status as 'approved' | 'rejected',
+        amount: existing.totalAmount,
+      });
+    }
+
     return this.findById(tenantId, id);
   }
 

@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import * as crypto from 'crypto';
 import { eq, and, isNull } from 'drizzle-orm';
 import * as bcrypt from 'bcryptjs';
@@ -22,6 +23,7 @@ export class UserService {
     @Inject(DATABASE) private readonly db: DrizzleDB,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   /**
@@ -188,7 +190,26 @@ export class UserService {
       ? this.buildActivationUrl(user.id, tenantId)
       : undefined;
 
+    if (activationUrl) {
+      // Trigger the email listener (no-op if SMTP unconfigured for tenant).
+      this.eventEmitter.emit('user.invited', {
+        userId: user.id,
+        tenantId,
+        activationUrl,
+      });
+    }
+
     return { ...user, activationUrl };
+  }
+
+  /**
+   * Re-issue an activation/reset link AND emit `user.invited` so the email
+   * listener delivers it via SMTP. Used by admin "Resend invite".
+   */
+  async resendInvite(tenantId: string, userId: string) {
+    const { activationUrl } = await this.issueResetLink(tenantId, userId);
+    this.eventEmitter.emit('user.invited', { userId, tenantId, activationUrl });
+    return { activationUrl };
   }
 
   /**

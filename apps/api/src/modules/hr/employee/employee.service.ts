@@ -106,6 +106,11 @@ export class EmployeeService {
         tenantId,
         existingUser.id,
       );
+      this.eventEmitter.emit('user.invited', {
+        userId: existingUser.id,
+        tenantId,
+        activationUrl,
+      });
       return { activationUrl, userId: existingUser.id, created: false };
     }
 
@@ -120,8 +125,17 @@ export class EmployeeService {
       sendInvite: true,
     });
 
+    const activationUrl = (created as { activationUrl?: string }).activationUrl ?? '';
+    if (activationUrl) {
+      this.eventEmitter.emit('user.invited', {
+        userId: created.id,
+        tenantId,
+        activationUrl,
+      });
+    }
+
     return {
-      activationUrl: (created as { activationUrl?: string }).activationUrl ?? '',
+      activationUrl,
       userId: created.id,
       created: true,
     };

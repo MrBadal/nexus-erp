@@ -954,6 +954,14 @@ export class PayrollService {
       components,
     });
 
+    // Notify employee that their payslip is available
+    this.eventEmitter.emit('hr.payslip.published', {
+      tenantId,
+      employeeId: entry.employeeId,
+      period: entry.period,
+      netPay: entry.netPay,
+    });
+
     return updated;
   }
 }

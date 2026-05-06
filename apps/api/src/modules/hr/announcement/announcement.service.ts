@@ -16,6 +16,7 @@ import {
   or,
   sql,
 } from 'drizzle-orm';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DATABASE, DrizzleDB } from '../../../database/database.module.js';
 import { employees } from '../../../database/schema/index.js';
 import {
@@ -29,7 +30,10 @@ import { UpdateAnnouncementDto } from './dto/update-announcement.dto.js';
 
 @Injectable()
 export class AnnouncementService {
-  constructor(@Inject(DATABASE) private readonly db: DrizzleDB) {}
+  constructor(
+    @Inject(DATABASE) private readonly db: DrizzleDB,
+    private readonly eventEmitter: EventEmitter2,
+  ) {}
 
   // ─── HR-side ────────────────────────────────────────────
 
@@ -198,6 +202,14 @@ export class AnnouncementService {
         ),
       )
       .returning();
+
+    this.eventEmitter.emit('hr.announcement.published', {
+      tenantId,
+      title: row.title,
+      body: row.body,
+      audience: 'all',
+      publishedBy: row.createdBy,
+    });
 
     return row;
   }

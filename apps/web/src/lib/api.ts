@@ -539,6 +539,13 @@ export const endpoints = {
     list: '/settings/number-series',
     update: (id: string) => `/settings/number-series/${id}`,
   },
+  smtp: {
+    get: '/settings/smtp',
+    upsert: '/settings/smtp',
+    delete: '/settings/smtp',
+    testConnection: '/settings/smtp/test-connection',
+    testSend: '/settings/smtp/test-send',
+  },
   // CRM
   contacts: {
     list: '/crm/contacts',

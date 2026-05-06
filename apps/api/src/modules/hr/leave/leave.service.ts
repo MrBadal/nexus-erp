@@ -310,6 +310,15 @@ export class LeaveService {
       totalDays: updated.totalDays,
     });
 
+    // Email notification to employee
+    this.eventEmitter.emit('hr.leave.decided', {
+      tenantId,
+      employeeId: updated.employeeId,
+      decision: 'approved' as const,
+      fromDate: updated.fromDate,
+      toDate: updated.toDate,
+    });
+
     return updated;
   }
 
@@ -345,6 +354,15 @@ export class LeaveService {
       })
       .where(eq(leaveApplications.id, id))
       .returning();
+
+    this.eventEmitter.emit('hr.leave.decided', {
+      tenantId,
+      employeeId: updated.employeeId,
+      decision: 'rejected' as const,
+      fromDate: updated.fromDate,
+      toDate: updated.toDate,
+      notes: reason,
+    });
 
     return updated;
   }
