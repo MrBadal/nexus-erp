@@ -414,6 +414,7 @@ export const endpoints = {
     create: '/hr/employees',
     update: (id: string) => `/hr/employees/${id}`,
     delete: (id: string) => `/hr/employees/${id}`,
+    inviteToPortal: (id: string) => `/hr/employees/${id}/invite-to-portal`,
   },
   departments: {
     list: '/hr/departments',

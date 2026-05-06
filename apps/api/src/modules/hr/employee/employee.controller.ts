@@ -132,6 +132,22 @@ export class EmployeeController {
     return this.employeeService.softDeleteEmployee(tenantId, id);
   }
 
+  @Post('employees/:id/invite-to-portal')
+  @RequirePermissions('hr:write')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Create/refresh the login account linked to this employee',
+    description:
+      'Provisions a User account with the employee role linked to this employee record, and returns a one-time activation URL the admin shares with the employee. If a user with the same email already exists, it is linked and a fresh reset link is issued.',
+  })
+  @ApiResponse({ status: 200, description: 'Activation URL issued' })
+  async inviteEmployeeToPortal(
+    @CurrentTenant() tenantId: string,
+    @Param('id', UuidValidationPipe) id: string,
+  ) {
+    return this.employeeService.inviteEmployeeToPortal(tenantId, id);
+  }
+
   // ─── Departments ──────────────────────────────────────
 
   @Get('departments')

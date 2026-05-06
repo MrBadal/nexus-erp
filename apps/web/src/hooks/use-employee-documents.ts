@@ -13,6 +13,11 @@ export type EmployeeDocumentType =
   | 'id_proof'
   | 'certificate'
   | 'payslip_archive'
+  | 'resume'
+  | 'aadhaar'
+  | 'pan_card'
+  | 'address_proof'
+  | 'experience_letter'
   | 'other';
 
 export const EMPLOYEE_DOCUMENT_TYPE_LABELS: Record<EmployeeDocumentType, string> = {
@@ -21,8 +26,24 @@ export const EMPLOYEE_DOCUMENT_TYPE_LABELS: Record<EmployeeDocumentType, string>
   id_proof: 'ID Proof',
   certificate: 'Certificate',
   payslip_archive: 'Payslip Archive',
+  resume: 'Resume / CV',
+  aadhaar: 'Aadhaar',
+  pan_card: 'PAN Card',
+  address_proof: 'Address Proof',
+  experience_letter: 'Experience Letter',
   other: 'Other',
 };
+
+/** Document types an employee can upload themselves from the ESS portal. */
+export const ESS_UPLOADABLE_DOCUMENT_TYPES: EmployeeDocumentType[] = [
+  'resume',
+  'aadhaar',
+  'pan_card',
+  'address_proof',
+  'experience_letter',
+  'certificate',
+  'other',
+];
 
 export interface EmployeeDocument {
   id: string;
@@ -171,6 +192,23 @@ export function useMyDocuments() {
   return useQuery({
     queryKey: ESS_LIST_KEY,
     queryFn: () => get<MyEmployeeDocument[]>('/ess/documents'),
+  });
+}
+
+/** Employee uploads their own personal document (resume, ID proof, etc.). */
+export function useUploadMyDocument() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      type: EmployeeDocumentType;
+      name: string;
+      fileUrl: string;
+      fileSize?: number;
+      mimeType?: string;
+      expiresAt?: string;
+      notes?: string;
+    }) => post<MyEmployeeDocument>('/ess/documents', input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ESS_LIST_KEY }),
   });
 }
 

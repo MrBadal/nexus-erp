@@ -17,11 +17,14 @@ import {
   leaveTypes,
   payrollEntries,
   expenseClaims,
+  users,
+  roles,
   type NewEmployee,
   type NewDepartment,
   type NewDesignation,
 } from '../../../database/schema/index.js';
 import { EVENTS } from '../../../common/events.constants.js';
+import { UserService } from '../../user/user.service.js';
 import { CreateEmployeeDto } from './dto/create-employee.dto.js';
 import { UpdateEmployeeDto } from './dto/update-employee.dto.js';
 import { CreateDepartmentDto } from './dto/create-department.dto.js';
@@ -41,7 +44,88 @@ export class EmployeeService {
   constructor(
     @Inject(DATABASE) private readonly db: DrizzleDB,
     private readonly eventEmitter: EventEmitter2,
+    private readonly userService: UserService,
   ) {}
+
+  /**
+   * Create (or refresh) the linked login account for an employee so they can
+   * log into the Employee Self-Service portal. Idempotent:
+   *   - If no user exists for this email yet, creates one tied via
+   *     users.employeeId, assigns the tenant's "employee" role, and returns
+   *     the activation URL.
+   *   - If a user already exists for this email, ensures it's linked to the
+   *     employee record, then issues a fresh reset link so they can re-set
+   *     their password ("Resend invite").
+   */
+  async inviteEmployeeToPortal(
+    tenantId: string,
+    employeeId: string,
+  ): Promise<{ activationUrl: string; userId: string; created: boolean }> {
+    const employee = await this.findEmployeeById(tenantId, employeeId);
+    if (!employee) {
+      throw new NotFoundException(`Employee ${employeeId} not found`);
+    }
+    if (!employee.email) {
+      throw new BadRequestException(
+        'Employee has no email on record — add one first, then re-issue the invite.',
+      );
+    }
+
+    // Look up the per-tenant "employee" role (seeded via TenantOnboardingService).
+    const [employeeRole] = await this.db
+      .select()
+      .from(roles)
+      .where(and(eq(roles.tenantId, tenantId), eq(roles.slug, 'employee')))
+      .limit(1);
+    if (!employeeRole) {
+      throw new BadRequestException(
+        'No "employee" role exists in this tenant. Re-seed roles before inviting employees.',
+      );
+    }
+
+    // Existing user with this email?
+    const [existingUser] = await this.db
+      .select()
+      .from(users)
+      .where(
+        and(
+          eq(users.tenantId, tenantId),
+          eq(users.email, employee.email),
+          isNull(users.deletedAt),
+        ),
+      )
+      .limit(1);
+
+    if (existingUser) {
+      // Ensure linkage; then re-issue a reset link.
+      const updates: Record<string, unknown> = { updatedAt: new Date() };
+      if (existingUser.employeeId !== employeeId) updates.employeeId = employeeId;
+      if (!existingUser.roleId) updates.roleId = employeeRole.id;
+      await this.db.update(users).set(updates).where(eq(users.id, existingUser.id));
+      const { activationUrl } = await this.userService.issueResetLink(
+        tenantId,
+        existingUser.id,
+      );
+      return { activationUrl, userId: existingUser.id, created: false };
+    }
+
+    // Fresh invite.
+    const created = await this.userService.create(tenantId, {
+      email: employee.email,
+      firstName: employee.firstName,
+      lastName: employee.lastName,
+      phone: employee.phone ?? undefined,
+      roleId: employeeRole.id,
+      employeeId,
+      sendInvite: true,
+    });
+
+    return {
+      activationUrl: (created as { activationUrl?: string }).activationUrl ?? '',
+      userId: created.id,
+      created: true,
+    };
+  }
 
   // ─── Employee CRUD ──────────────────────────────────────
 

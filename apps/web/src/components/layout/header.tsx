@@ -4,7 +4,6 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Search,
   Bell,
   ChevronRight,
   LogOut,
@@ -23,7 +22,6 @@ import * as Avatar from "@radix-ui/react-avatar";
 import { Button } from "@/components/ui/button";
 import { useAuthStore } from "@/stores/auth.store";
 import { cn } from "@/lib/utils";
-import { CommandPalette } from "./command-palette";
 
 function getBreadcrumbs(pathname: string): { label: string; href: string }[] {
   const segments = pathname.split("/").filter(Boolean);
@@ -49,19 +47,6 @@ export function Header() {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const breadcrumbs = getBreadcrumbs(pathname);
-  const [commandPaletteOpen, setCommandPaletteOpen] = React.useState(false);
-
-  // Global Ctrl+K / Cmd+K handler
-  React.useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
-        e.preventDefault();
-        setCommandPaletteOpen(true);
-      }
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, []);
 
   return (
     <>
@@ -88,18 +73,6 @@ export function Header() {
 
         {/* Right section */}
         <div className="flex items-center gap-2">
-          {/* Search / Cmd+K trigger */}
-          <button
-            onClick={() => setCommandPaletteOpen(true)}
-            className="hidden md:flex items-center gap-2 rounded-md border bg-muted/50 px-3 h-8 text-sm text-muted-foreground hover:bg-muted transition-colors"
-          >
-            <Search className="h-3.5 w-3.5" />
-            <span>Search...</span>
-            <kbd className="pointer-events-none ml-4 hidden h-5 select-none items-center gap-0.5 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground sm:flex">
-              Ctrl+K
-            </kbd>
-          </button>
-
           {/* Quick create dropdown */}
           <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild>
@@ -220,11 +193,6 @@ export function Header() {
           </DropdownMenu.Root>
         </div>
       </header>
-
-      <CommandPalette
-        open={commandPaletteOpen}
-        onOpenChange={setCommandPaletteOpen}
-      />
     </>
   );
 }

@@ -134,6 +134,9 @@ export class UserService {
       roleId?: string;
       /** When true (the default), force the invite flow even if a password was supplied. */
       sendInvite?: boolean;
+      /** Bridge to HR — link this user to an existing employee record so ESS
+       *  routes (which scope by users.employeeId) work. */
+      employeeId?: string;
     },
   ) {
     // Check email uniqueness within tenant
@@ -160,6 +163,7 @@ export class UserService {
         lastName: data.lastName,
         phone: data.phone || null,
         roleId: data.roleId || null,
+        employeeId: data.employeeId || null,
         // Admin-supplied password → user is immediately active.
         // Invite flow → pending_verification until they set their own password.
         status: useInviteFlow ? 'pending_verification' : 'active',

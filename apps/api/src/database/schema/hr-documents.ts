@@ -23,6 +23,12 @@ export const employeeDocumentTypeEnum = pgEnum('employee_document_type', [
   'id_proof',
   'certificate',
   'payslip_archive',
+  // Employee-uploadable personal documents
+  'resume',
+  'aadhaar',
+  'pan_card',
+  'address_proof',
+  'experience_letter',
   'other',
 ]);
 

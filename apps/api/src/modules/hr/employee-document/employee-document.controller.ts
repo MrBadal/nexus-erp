@@ -130,6 +130,30 @@ export class EmployeeDocumentController {
     return this.service.findMine(tenantId, employeeId);
   }
 
+  @Post('ess/documents')
+  @ScopeToSelf()
+  @ApiOperation({
+    summary: 'Upload a personal document (ESS)',
+    description:
+      'Employee uploads a personal document (resume, ID copy, certificate). The document is auto-tagged to the calling employee, marked visibleToEmployee=true so they can see/download it themselves, and uploadedBy is set to the user.',
+  })
+  async uploadMine(
+    @CurrentTenant() tenantId: string,
+    @CurrentUser() user: JwtPayload,
+    @Req() req: Request & { scopedEmployeeId?: string },
+    @Body() body: Omit<CreateDocumentDto, 'employeeId' | 'visibleToEmployee'>,
+  ) {
+    const employeeId = req.scopedEmployeeId;
+    if (!employeeId) {
+      throw new NotFoundException('Employee context not found');
+    }
+    return this.service.create(tenantId, user.sub, {
+      ...body,
+      employeeId,
+      visibleToEmployee: true,
+    });
+  }
+
   @Get('ess/documents/:id/download')
   @ScopeToSelf()
   @ApiOperation({ summary: 'Download my document (ESS)' })

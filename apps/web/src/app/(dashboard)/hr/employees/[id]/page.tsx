@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
+import api, { endpoints } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
 import { FormPage } from '@/components/layout/form-page';
 import { FormSection } from '@/components/ui/form-section';
@@ -319,12 +320,49 @@ export default function EmployeeDetailPage() {
 
   // ---------- Actions ----------
 
-  const secondaryActions = [];
+  const handleInviteToPortal = async () => {
+    try {
+      const { data } = await api.post<{ activationUrl: string; userId: string; created: boolean }>(
+        endpoints.employees.inviteToPortal(employeeId),
+      );
+      if (!data.activationUrl) {
+        toast.error('No activation URL returned');
+        return;
+      }
+      await navigator.clipboard.writeText(data.activationUrl);
+      toast.success(
+        data.created
+          ? 'Login account created — activation link copied'
+          : 'Activation link refreshed and copied',
+        {
+          description:
+            'Share this link with the employee. It is valid for 7 days and single-use.',
+        },
+      );
+    } catch (err: unknown) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const msg = (err as any)?.response?.data?.message || (err instanceof Error ? err.message : 'Failed to invite');
+      toast.error(typeof msg === 'string' ? msg : 'Failed to invite');
+    }
+  };
+
+  type ActionItem = {
+    label: string;
+    onClick: () => void | Promise<void>;
+    variant: 'outline';
+  };
+  const secondaryActions: ActionItem[] = [
+    {
+      label: 'Invite to Employee Portal',
+      onClick: handleInviteToPortal,
+      variant: 'outline',
+    },
+  ];
   if (status === 'inactive') {
-    secondaryActions.push({ label: 'Activate', onClick: handleActivate, variant: 'outline' as const });
+    secondaryActions.push({ label: 'Activate', onClick: handleActivate, variant: 'outline' });
   }
   if (status === 'active' || status === 'on_leave') {
-    secondaryActions.push({ label: 'Terminate', onClick: handleTerminate, variant: 'outline' as const });
+    secondaryActions.push({ label: 'Terminate', onClick: handleTerminate, variant: 'outline' });
   }
 
   const meta = [
