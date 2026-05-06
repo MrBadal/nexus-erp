@@ -13,6 +13,9 @@ import {
   Users,
   Calendar,
   LogOut,
+  FolderOpen,
+  Megaphone,
+  Target,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth.store';
 import { cn } from '@/lib/utils';
@@ -29,8 +32,12 @@ const navItems: NavItem[] = [
   { label: 'Attendance', href: '/ess/attendance', icon: Clock },
   { label: 'Leave', href: '/ess/leave', icon: CalendarDays },
   { label: 'Team Calendar', href: '/ess/leave/calendar', icon: Calendar },
+  { label: 'Holidays', href: '/ess/holidays', icon: Calendar },
   { label: 'Payslips', href: '/ess/payslips', icon: Wallet },
   { label: 'Expenses', href: '/ess/expenses', icon: Receipt },
+  { label: 'My Documents', href: '/ess/documents', icon: FolderOpen },
+  { label: 'My Performance', href: '/ess/performance', icon: Target },
+  { label: 'Announcements', href: '/ess/announcements', icon: Megaphone },
   { label: 'My Team', href: '/ess/team', icon: Users },
 ];
 

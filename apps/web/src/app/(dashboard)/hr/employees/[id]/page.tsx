@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Button } from '@/components/ui/button';
 import {
   useEmployee,
   useUpdateEmployee,
@@ -29,6 +30,13 @@ import {
   usePayrollEntries,
   type Employee,
 } from '@/hooks/use-hr';
+import {
+  useEmployeeDocuments,
+  useCreateEmployeeDocument,
+  useDeleteEmployeeDocument,
+  EMPLOYEE_DOCUMENT_TYPE_LABELS,
+  type EmployeeDocumentType,
+} from '@/hooks/use-employee-documents';
 import { formatDate } from '@/lib/utils';
 
 // ---------------------------------------------------------------------------
@@ -68,6 +76,161 @@ const employmentTypeOptions = [
 // ---------------------------------------------------------------------------
 // Cross-module tab sub-components
 // ---------------------------------------------------------------------------
+
+function DocumentsTab({ employeeId }: { employeeId: string }) {
+  type DocType = EmployeeDocumentType;
+  const { data: docs, isLoading } = useEmployeeDocuments({ employeeId });
+  const createMut = useCreateEmployeeDocument();
+  const deleteMut = useDeleteEmployeeDocument();
+  const [form, setForm] = useState<{
+    type: DocType;
+    name: string;
+    fileUrl: string;
+    notes: string;
+    visibleToEmployee: boolean;
+  }>({
+    type: 'offer_letter' as DocType,
+    name: '',
+    fileUrl: '',
+    notes: '',
+    visibleToEmployee: true,
+  });
+
+  const handleUpload = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.name.trim() || !form.fileUrl.trim()) {
+      toast.error('Document name and file URL are required');
+      return;
+    }
+    createMut.mutate(
+      {
+        employeeId,
+        type: form.type,
+        name: form.name.trim(),
+        fileUrl: form.fileUrl.trim(),
+        notes: form.notes.trim() || undefined,
+        visibleToEmployee: form.visibleToEmployee,
+      },
+      {
+        onSuccess: () => {
+          toast.success('Document uploaded');
+          setForm({
+            type: 'offer_letter' as DocType,
+            name: '',
+            fileUrl: '',
+            notes: '',
+            visibleToEmployee: true,
+          });
+        },
+        onError: (err: Error) => toast.error(err.message || 'Upload failed'),
+      },
+    );
+  };
+
+  return (
+    <div className="space-y-4 p-4">
+      <form onSubmit={handleUpload} className="grid gap-3 rounded-md border bg-muted/20 p-4 md:grid-cols-2">
+        <div className="md:col-span-2 text-sm font-medium">
+          Upload a document for this employee
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium">Type</label>
+          <Select
+            value={form.type}
+            onValueChange={(v) => setForm((f) => ({ ...f, type: v as DocType }))}
+          >
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {Object.entries(EMPLOYEE_DOCUMENT_TYPE_LABELS).map(([k, label]) => (
+                <SelectItem key={k} value={k}>{label as string}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium">Name *</label>
+          <Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="e.g. Offer Letter — Mar 2026" />
+        </div>
+        <div className="space-y-1 md:col-span-2">
+          <label className="text-xs font-medium">File URL *</label>
+          <Input value={form.fileUrl} onChange={(e) => setForm((f) => ({ ...f, fileUrl: e.target.value }))} placeholder="https://..." />
+          <p className="text-[11px] text-muted-foreground">Paste a public/cloud URL for the document. Direct upload coming soon.</p>
+        </div>
+        <div className="space-y-1 md:col-span-2">
+          <label className="text-xs font-medium">Notes (optional)</label>
+          <Input value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} placeholder="Optional context" />
+        </div>
+        <label className="flex items-center gap-2 text-sm md:col-span-2">
+          <input
+            type="checkbox"
+            checked={form.visibleToEmployee}
+            onChange={(e) => setForm((f) => ({ ...f, visibleToEmployee: e.target.checked }))}
+          />
+          Visible to employee in their portal
+        </label>
+        <div className="md:col-span-2 flex justify-end">
+          <Button type="submit" disabled={createMut.isPending}>
+            {createMut.isPending ? 'Uploading…' : 'Upload'}
+          </Button>
+        </div>
+      </form>
+
+      {isLoading ? (
+        <p className="p-4 text-sm text-muted-foreground">Loading documents…</p>
+      ) : (docs ?? []).length === 0 ? (
+        <p className="p-4 text-sm text-muted-foreground">No documents yet for this employee.</p>
+      ) : (
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b bg-muted/50 text-left text-xs font-medium uppercase text-muted-foreground">
+              <th className="px-4 py-2">Document</th>
+              <th className="px-4 py-2">Type</th>
+              <th className="px-4 py-2">Visible</th>
+              <th className="px-4 py-2">Uploaded</th>
+              <th className="px-4 py-2 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(docs ?? []).map((d) => (
+              <tr key={d.id} className="border-b last:border-0">
+                <td className="px-4 py-2">
+                  <div className="font-medium">{d.name}</div>
+                  {d.notes && <div className="text-xs text-muted-foreground">{d.notes}</div>}
+                </td>
+                <td className="px-4 py-2">{EMPLOYEE_DOCUMENT_TYPE_LABELS[d.type] ?? d.type}</td>
+                <td className="px-4 py-2">{d.visibleToEmployee ? 'Yes' : 'No'}</td>
+                <td className="px-4 py-2 text-muted-foreground">{formatDate(d.uploadedAt)}</td>
+                <td className="px-4 py-2 text-right">
+                  <a
+                    href={d.fileUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mr-3 text-xs text-primary underline"
+                  >
+                    Open
+                  </a>
+                  <button
+                    onClick={() => {
+                      if (confirm(`Delete "${d.name}"?`)) {
+                        deleteMut.mutate(d.id, {
+                          onSuccess: () => toast.success('Document removed'),
+                          onError: (e: Error) => toast.error(e.message || 'Failed'),
+                        });
+                      }
+                    }}
+                    className="text-xs text-destructive underline"
+                  >
+                    Remove
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
 
 function LeaveTab({ employeeId }: { employeeId: string }) {
   const router = useRouter();
@@ -192,7 +355,7 @@ export default function EmployeeDetailPage() {
   const [localBankName, setLocalBankName] = useState<string | null>(null);
   const [localBankAccountNumber, setLocalBankAccountNumber] = useState<string | null>(null);
   const [localBankIfsc, setLocalBankIfsc] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState('leave');
+  const [activeTab, setActiveTab] = useState('documents');
 
   const status: EmployeeStatus = employee?.status ?? 'active';
 
@@ -564,6 +727,7 @@ export default function EmployeeDetailPage() {
         <div className="border rounded-lg overflow-hidden">
           <div className="flex border-b bg-muted/30">
             {[
+              { key: 'documents', label: 'Documents' },
               { key: 'leave', label: 'Leave Applications' },
               { key: 'attendance', label: 'Attendance' },
               { key: 'payroll', label: 'Payroll' },
@@ -577,6 +741,7 @@ export default function EmployeeDetailPage() {
             ))}
           </div>
           <div>
+            {activeTab === 'documents' && <DocumentsTab employeeId={employeeId} />}
             {activeTab === 'leave' && <LeaveTab employeeId={employeeId} />}
             {activeTab === 'attendance' && <AttendanceTab employeeId={employeeId} />}
             {activeTab === 'payroll' && <PayrollTab employeeId={employeeId} />}
