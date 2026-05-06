@@ -107,4 +107,19 @@ export class UserController {
   ) {
     return this.userService.softDelete(tenantId, id);
   }
+
+  @Post(':id/issue-reset-link')
+  @RequirePermissions('users:write')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Issue a one-time activation/reset link for the user (admin-shared)',
+    description:
+      'Generates a 7-day password-reset JWT and returns a URL the admin can hand to the user. Used both for first-time activation and for password resets when no email infrastructure is wired up.',
+  })
+  async issueResetLink(
+    @CurrentTenant() tenantId: string,
+    @Param('id', UuidValidationPipe) id: string,
+  ) {
+    return this.userService.issueResetLink(tenantId, id);
+  }
 }

@@ -265,6 +265,8 @@ export const endpoints = {
     create: '/users',
     update: (id: string) => `/users/${id}`,
     delete: (id: string) => `/users/${id}`,
+    issueResetLink: (id: string) => `/users/${id}/issue-reset-link`,
+    changeMyPassword: '/users/me/password',
   },
   roles: {
     list: '/roles',

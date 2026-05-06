@@ -5,16 +5,47 @@ import {
   ConflictException,
   BadRequestException,
 } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
+import * as crypto from 'crypto';
 import { eq, and, isNull } from 'drizzle-orm';
 import * as bcrypt from 'bcryptjs';
 import { DATABASE, DrizzleDB } from '../../database/database.module.js';
 import { users, type NewUser } from '../../database/schema/index.js';
 
 const SALT_ROUNDS = 12;
+const ACTIVATION_TOKEN_TTL = '7d';
 
 @Injectable()
 export class UserService {
-  constructor(@Inject(DATABASE) private readonly db: DrizzleDB) {}
+  constructor(
+    @Inject(DATABASE) private readonly db: DrizzleDB,
+    private readonly jwtService: JwtService,
+    private readonly configService: ConfigService,
+  ) {}
+
+  /**
+   * Builds a one-time activation/reset URL for a user. The token is the same
+   * shape AuthService.resetPassword() already accepts (type='password_reset'),
+   * so the user can hit /auth/set-password?token=… and set their own
+   * password — at which point AuthService flips status from
+   * pending_verification → active.
+   *
+   * Caller decides whether to email the URL or hand it to the admin to
+   * share manually (no SMTP wired yet).
+   */
+  buildActivationUrl(userId: string, tenantId: string): string {
+    const token = this.jwtService.sign(
+      { sub: userId, tenantId, type: 'password_reset' },
+      {
+        secret: this.configService.get<string>('app.jwtSecret'),
+        expiresIn: ACTIVATION_TOKEN_TTL,
+      },
+    );
+    const base = (this.configService.get<string>('app.publicUrl') || '')
+      .replace(/\/$/, '');
+    return `${base}/set-password?token=${encodeURIComponent(token)}`;
+  }
 
   async findAll(tenantId: string) {
     return this.db
@@ -94,11 +125,15 @@ export class UserService {
     tenantId: string,
     data: {
       email: string;
-      password: string;
+      /** Optional. If omitted, a random hash is stored and the response includes
+       *  an `activationUrl` the admin shares with the user to set their own password. */
+      password?: string;
       firstName: string;
       lastName: string;
       phone?: string;
       roleId?: string;
+      /** When true (the default), force the invite flow even if a password was supplied. */
+      sendInvite?: boolean;
     },
   ) {
     // Check email uniqueness within tenant
@@ -107,7 +142,13 @@ export class UserService {
       throw new ConflictException('A user with this email already exists in this tenant');
     }
 
-    const passwordHash = await bcrypt.hash(data.password, SALT_ROUNDS);
+    const useInviteFlow = data.sendInvite !== false && !data.password;
+
+    // If admin didn't set a password, store a random unguessable hash. The user
+    // will replace it via the activation link.
+    const rawSecret =
+      data.password ?? crypto.randomBytes(32).toString('base64url');
+    const passwordHash = await bcrypt.hash(rawSecret, SALT_ROUNDS);
 
     const [user] = await this.db
       .insert(users)
@@ -119,7 +160,14 @@ export class UserService {
         lastName: data.lastName,
         phone: data.phone || null,
         roleId: data.roleId || null,
-        status: 'pending_verification',
+        // Admin-supplied password → user is immediately active.
+        // Invite flow → pending_verification until they set their own password.
+        status: useInviteFlow ? 'pending_verification' : 'active',
+        // For invited users we want passwordChangedAt to be NULL so the JWT
+        // reset-token's iat doesn't trip the "already used" check in
+        // AuthService.resetPassword(). The first password the user sets via
+        // the activation link will populate passwordChangedAt.
+        passwordChangedAt: useInviteFlow ? null : new Date(),
       })
       .returning({
         id: users.id,
@@ -132,7 +180,32 @@ export class UserService {
         createdAt: users.createdAt,
       });
 
-    return user;
+    const activationUrl = useInviteFlow
+      ? this.buildActivationUrl(user.id, tenantId)
+      : undefined;
+
+    return { ...user, activationUrl };
+  }
+
+  /**
+   * Re-issue an activation/reset link for an existing user. Admin presses
+   * "Resend invite" or "Reset password" in the user detail UI. Returns the
+   * URL for the admin to share — no email infrastructure required.
+   */
+  async issueResetLink(tenantId: string, userId: string): Promise<{ activationUrl: string }> {
+    const [user] = await this.db
+      .select({ id: users.id })
+      .from(users)
+      .where(
+        and(
+          eq(users.id, userId),
+          eq(users.tenantId, tenantId),
+          isNull(users.deletedAt),
+        ),
+      )
+      .limit(1);
+    if (!user) throw new NotFoundException('User not found');
+    return { activationUrl: this.buildActivationUrl(user.id, tenantId) };
   }
 
   async update(

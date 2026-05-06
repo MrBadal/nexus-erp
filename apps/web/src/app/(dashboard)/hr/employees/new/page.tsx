@@ -294,13 +294,34 @@ export default function NewEmployeePage() {
           </FormField>
           <FormField label="Reports To (Manager)">
             <Select value={form.managerId} onValueChange={(v) => update('managerId', v)}>
-              <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
+              <SelectTrigger>
+                <SelectValue
+                  placeholder={
+                    employees && employees.length
+                      ? 'Pick a manager (optional)'
+                      : 'No employees yet — leave blank for now'
+                  }
+                />
+              </SelectTrigger>
               <SelectContent>
                 {employees?.map((m) => (
-                  <SelectItem key={m.id} value={m.id}>{m.firstName} {m.lastName} ({m.employeeId})</SelectItem>
+                  <SelectItem key={m.id} value={m.id}>
+                    {m.firstName} {m.lastName} ({m.employeeId})
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            <p className="mt-1 text-xs text-muted-foreground">
+              The person this employee reports to in the org chart. Optional —
+              leave blank if this employee is at the top.
+              <br />
+              <span className="opacity-80">
+                Note: this is the <em>org-chart manager</em>, not a permission role.
+                If you want this user to have HR Manager <em>access</em> to the
+                system, create a User in <strong>Settings → Users</strong> with
+                the &quot;HR Manager&quot; role assigned.
+              </span>
+            </p>
           </FormField>
           <FormField label="Employment Type" required error={errors.employmentType}>
             <Select value={form.employmentType} onValueChange={(v) => update('employmentType', v)}>

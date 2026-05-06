@@ -71,6 +71,9 @@ services:
       JWT_EXPIRES_IN: 15m
       JWT_REFRESH_EXPIRES_IN: 7d
       CORS_ORIGIN: ${PUBLIC_URL}
+      # Used by UserService.buildActivationUrl() to build set-password links
+      # an admin shares with newly-created or password-resetting users.
+      PUBLIC_URL: ${PUBLIC_URL}
     deploy:
       resources:
         limits:

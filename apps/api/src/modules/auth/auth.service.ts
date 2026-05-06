@@ -75,6 +75,12 @@ export class AuthService {
       throw new UnauthorizedException('Account is inactive');
     }
 
+    if (user.status === 'pending_verification') {
+      throw new UnauthorizedException(
+        'Account not yet activated. Open the activation link your admin shared and set your password to continue.',
+      );
+    }
+
     // Verify password
     const isPasswordValid = await bcrypt.compare(loginDto.password, user.passwordHash);
 
