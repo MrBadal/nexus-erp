@@ -424,6 +424,12 @@ export class AuthService {
         eventType: 'password_change',
       });
 
+      // Send the "your password was changed" confirmation email via SMTP.
+      this.eventEmitter.emit('auth.password-changed', {
+        tenantId: payload.tenantId,
+        userId: payload.sub,
+      });
+
       return { message: 'Password has been reset successfully' };
     } catch (error) {
       throw new BadRequestException('Invalid or expired reset token');

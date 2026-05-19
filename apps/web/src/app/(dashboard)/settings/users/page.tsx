@@ -118,13 +118,13 @@ export default function UsersPage() {
           onClick={async (e) => {
             e.stopPropagation();
             try {
-              const { data } = await api.post<{ activationUrl: string }>(
+              const { data } = await api.post<{ activationUrl: string; emailQueued?: boolean }>(
                 endpoints.users.issueResetLink(row.original.id),
               );
               await navigator.clipboard.writeText(data.activationUrl);
-              toast.success('Activation/reset link copied to clipboard', {
+              toast.success('Password reset email sent to the user', {
                 description:
-                  'Share this link with the user. It is valid for 7 days and is single-use.',
+                  'A reset link was emailed (if SMTP is configured) and also copied to your clipboard. Valid 7 days, single-use.',
               });
             } catch (err) {
               toast.error(
@@ -132,7 +132,7 @@ export default function UsersPage() {
               );
             }
           }}
-          title="Issue a one-time activation/reset link and copy to clipboard"
+          title="Email the user a password-reset link (also copies to clipboard)"
         >
           <Mail className="mr-1 h-3.5 w-3.5" />
           {row.original.status === 'pending_verification' ? 'Resend invite' : 'Reset password'}

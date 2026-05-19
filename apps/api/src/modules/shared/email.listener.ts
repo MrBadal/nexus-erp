@@ -59,6 +59,39 @@ export class EmailListener {
     });
   }
 
+  // ─── Password changed (confirmation / security alert) ───────────────
+
+  @OnEvent('auth.password-changed')
+  async onPasswordChanged(payload: { tenantId: string; userId: string }) {
+    const [user] = await this.db
+      .select({ tenantId: users.tenantId, email: users.email, firstName: users.firstName })
+      .from(users)
+      .where(eq(users.id, payload.userId))
+      .limit(1);
+    if (!user) return;
+
+    const html = this.emailService.wrapTemplate(
+      'Your password was changed',
+      `<p>Hi ${this.escape(user.firstName) || 'there'},</p>
+       <p>This is a confirmation that the password for your NexusERP account
+       (<strong>${this.escape(user.email)}</strong>) was just changed.</p>
+       <p>If you made this change, no further action is needed. If you did
+       <strong>not</strong> change your password, contact your administrator
+       immediately — your account may be compromised.</p>`,
+      `${this.getPublicUrl()}/login`,
+      'Go to sign in',
+    );
+    await this.emailService.send({
+      // Use the looked-up tenantId rather than trusting the event payload.
+      tenantId: user.tenantId,
+      to: user.email,
+      subject: 'Your NexusERP password was changed',
+      template: 'password_changed',
+      html,
+      metadata: { userId: payload.userId },
+    });
+  }
+
   // ─── User invited / employee onboarded to ESS ───────────────────────
 
   @OnEvent('user.invited')

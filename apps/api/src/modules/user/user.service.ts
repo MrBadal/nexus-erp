@@ -27,6 +27,27 @@ export class UserService {
   ) {}
 
   /**
+   * Sign a one-time password-reset / activation JWT (type='password_reset').
+   * Same shape AuthService.resetPassword() accepts.
+   */
+  private signResetToken(userId: string, tenantId: string): string {
+    return this.jwtService.sign(
+      { sub: userId, tenantId, type: 'password_reset' },
+      {
+        secret: this.configService.get<string>('app.jwtSecret'),
+        expiresIn: ACTIVATION_TOKEN_TTL,
+      },
+    );
+  }
+
+  /** Build the /set-password URL for a given reset token. */
+  private buildSetPasswordUrl(token: string): string {
+    const base = (this.configService.get<string>('app.publicUrl') || '')
+      .replace(/\/$/, '');
+    return `${base}/set-password?token=${encodeURIComponent(token)}`;
+  }
+
+  /**
    * Builds a one-time activation/reset URL for a user. The token is the same
    * shape AuthService.resetPassword() already accepts (type='password_reset'),
    * so the user can hit /auth/set-password?token=… and set their own
@@ -34,19 +55,10 @@ export class UserService {
    * pending_verification → active.
    *
    * Caller decides whether to email the URL or hand it to the admin to
-   * share manually (no SMTP wired yet).
+   * share manually.
    */
   buildActivationUrl(userId: string, tenantId: string): string {
-    const token = this.jwtService.sign(
-      { sub: userId, tenantId, type: 'password_reset' },
-      {
-        secret: this.configService.get<string>('app.jwtSecret'),
-        expiresIn: ACTIVATION_TOKEN_TTL,
-      },
-    );
-    const base = (this.configService.get<string>('app.publicUrl') || '')
-      .replace(/\/$/, '');
-    return `${base}/set-password?token=${encodeURIComponent(token)}`;
+    return this.buildSetPasswordUrl(this.signResetToken(userId, tenantId));
   }
 
   async findAll(tenantId: string) {
@@ -233,6 +245,46 @@ export class UserService {
     return { activationUrl: this.buildActivationUrl(user.id, tenantId) };
   }
 
+  /**
+   * Admin-triggered password reset for an existing user. Signs a fresh
+   * password-reset token and emits `auth.forgot-password` so the
+   * EmailListener delivers the "Reset your password" email via the tenant's
+   * configured SMTP. Also returns the URL so the admin can copy/share it
+   * manually as a fallback (e.g. SMTP not configured).
+   */
+  async adminResetPassword(
+    tenantId: string,
+    userId: string,
+  ): Promise<{ activationUrl: string; emailQueued: boolean }> {
+    const [user] = await this.db
+      .select({ id: users.id, email: users.email })
+      .from(users)
+      .where(
+        and(
+          eq(users.id, userId),
+          eq(users.tenantId, tenantId),
+          isNull(users.deletedAt),
+        ),
+      )
+      .limit(1);
+    if (!user) throw new NotFoundException('User not found');
+
+    const resetToken = this.signResetToken(user.id, tenantId);
+
+    // EmailListener.onForgotPassword sends the branded "Reset your password"
+    // email. No-op (skipped) if the tenant has no SMTP configured.
+    this.eventEmitter.emit('auth.forgot-password', {
+      userId: user.id,
+      email: user.email,
+      resetToken,
+    });
+
+    return {
+      activationUrl: this.buildSetPasswordUrl(resetToken),
+      emailQueued: true,
+    };
+  }
+
   async update(
     tenantId: string,
     id: string,
@@ -299,6 +351,9 @@ export class UserService {
         updatedAt: new Date(),
       })
       .where(eq(users.id, id));
+
+    // Notify the user their password changed (security confirmation email).
+    this.eventEmitter.emit('auth.password-changed', { tenantId, userId: id });
 
     return { message: 'Password changed successfully' };
   }

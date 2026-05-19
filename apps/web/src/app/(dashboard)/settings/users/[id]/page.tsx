@@ -118,12 +118,13 @@ export default function UserDetailPage() {
 
   const handleIssueResetLink = async () => {
     try {
-      const { data } = await api.post<{ activationUrl: string }>(
+      const { data } = await api.post<{ activationUrl: string; emailQueued?: boolean }>(
         endpoints.users.issueResetLink(userId),
       );
       await navigator.clipboard.writeText(data.activationUrl);
-      toast.success('Activation/reset link copied to clipboard', {
-        description: 'Valid 7 days, single-use. Share with the user.',
+      toast.success('Password reset email sent to the user', {
+        description:
+          'A reset link was emailed (if SMTP is configured) and also copied to your clipboard as a fallback. Valid 7 days, single-use.',
       });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to issue link');

@@ -112,14 +112,14 @@ export class UserController {
   @RequirePermissions('users:write')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Issue a one-time activation/reset link for the user (admin-shared)',
+    summary: 'Admin-triggered password reset — emails the user a reset link',
     description:
-      'Generates a 7-day password-reset JWT and returns a URL the admin can hand to the user. Used both for first-time activation and for password resets when no email infrastructure is wired up.',
+      'Generates a 7-day password-reset JWT, emails the user a "Reset your password" link via the tenant SMTP, and also returns the URL so the admin can copy/share it manually if SMTP is not configured.',
   })
   async issueResetLink(
     @CurrentTenant() tenantId: string,
     @Param('id', UuidValidationPipe) id: string,
   ) {
-    return this.userService.issueResetLink(tenantId, id);
+    return this.userService.adminResetPassword(tenantId, id);
   }
 }
