@@ -380,6 +380,9 @@ export class EmployeeService {
     if (data.taxRegime !== undefined) updateData.taxRegime = data.taxRegime;
     if (data.pfState !== undefined) updateData.pfState = data.pfState;
     if (data.profileImageUrl !== undefined) updateData.profileImageUrl = data.profileImageUrl;
+    if (data.probationEndDate !== undefined) updateData.probationEndDate = data.probationEndDate;
+    if (data.confirmationDate !== undefined) updateData.confirmationDate = data.confirmationDate;
+    if (data.confirmationStatus !== undefined) updateData.confirmationStatus = data.confirmationStatus;
 
     const [updated] = await this.db
       .update(employees)

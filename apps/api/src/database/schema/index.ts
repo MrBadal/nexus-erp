@@ -38,3 +38,9 @@ export * from './hr-asset-assignment';
 export * from './hr-shifts';
 export * from './hr-statutory';
 export * from './hr-personal';
+
+// HR additions (Increment 2-5): lifecycle, regularization, loans, exit
+export * from './hr-lifecycle';
+export * from './hr-regularization';
+export * from './hr-loans';
+export * from './hr-exit';

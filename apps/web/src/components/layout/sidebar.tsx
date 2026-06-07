@@ -72,6 +72,7 @@ import {
   FolderOpen,
   BadgeIndianRupee,
   Mail,
+  LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -193,6 +194,7 @@ const navigation: NavItem[] = [
         icon: Clock,
         children: [
           { title: "Records", href: "/hr/attendance", icon: ClipboardCheck },
+          { title: "Regularizations", href: "/hr/attendance-regularizations", icon: ClipboardCheck },
           { title: "Shifts", href: "/hr/shifts", icon: AlarmClock },
           { title: "Policies", href: "/hr/attendance-policies", icon: Gauge },
         ],
@@ -210,10 +212,13 @@ const navigation: NavItem[] = [
       },
       // ── Pay ──
       { title: "Payroll", href: "/hr/payroll", icon: Wallet },
+      { title: "Salary Revisions", href: "/hr/salary-revisions", icon: TrendingUp },
       { title: "Expense Claims", href: "/hr/expense-claims", icon: Receipt },
+      { title: "Loans & Advances", href: "/hr/loans", icon: Landmark },
       // ── Lifecycle ──
       { title: "Onboarding", href: "/hr/onboarding", icon: UserPlus },
       { title: "Offboarding", href: "/hr/offboarding", icon: UserMinus },
+      { title: "Exit Clearance", href: "/hr/exit-clearances", icon: LogOut },
       // ── Performance ──
       {
         title: "Performance",

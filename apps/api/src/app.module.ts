@@ -58,6 +58,10 @@ import { EmployeeEducationModule } from './modules/hr/employee-education/employe
 import { EmployeeExperienceModule } from './modules/hr/employee-experience/employee-experience.module.js';
 import { EmployeeFamilyModule } from './modules/hr/employee-family/employee-family.module.js';
 import { EmployeeSkillModule } from './modules/hr/employee-skill/employee-skill.module.js';
+import { SalaryRevisionModule } from './modules/hr/salary-revision/salary-revision.module.js';
+import { AttendanceRegularizationModule } from './modules/hr/attendance-regularization/attendance-regularization.module.js';
+import { LoanModule } from './modules/hr/loan/loan.module.js';
+import { ExitClearanceModule } from './modules/hr/exit-clearance/exit-clearance.module.js';
 
 @Module({
   imports: [
@@ -129,6 +133,10 @@ import { EmployeeSkillModule } from './modules/hr/employee-skill/employee-skill.
     EmployeeExperienceModule,
     EmployeeFamilyModule,
     EmployeeSkillModule,
+    SalaryRevisionModule,
+    AttendanceRegularizationModule,
+    LoanModule,
+    ExitClearanceModule,
   ],
 })
 export class AppModule implements NestModule {

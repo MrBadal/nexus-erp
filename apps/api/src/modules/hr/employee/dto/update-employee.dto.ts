@@ -11,4 +11,17 @@ export class UpdateEmployeeDto extends PartialType(CreateEmployeeDto) {
   @IsOptional()
   @IsEnum(['active', 'inactive', 'terminated', 'on_leave'])
   status?: string;
+
+  // Probation / confirmation lifecycle
+  @IsOptional()
+  @IsDateString()
+  probationEndDate?: string;
+
+  @IsOptional()
+  @IsDateString()
+  confirmationDate?: string;
+
+  @IsOptional()
+  @IsEnum(['probation', 'confirmed'])
+  confirmationStatus?: string;
 }
