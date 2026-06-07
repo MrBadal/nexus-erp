@@ -13,6 +13,7 @@ import {
 } from '../../../database/schema/index.js';
 import { CheckInDto } from './dto/check-in.dto.js';
 import { CheckOutDto } from './dto/check-out.dto.js';
+import { ManualAttendanceDto, UpdateAttendanceDto } from './dto/manual-attendance.dto.js';
 
 @Injectable()
 export class AttendanceService {
@@ -184,6 +185,126 @@ export class AttendanceService {
       .returning();
 
     return updated;
+  }
+
+  // ─── HR / Admin manual management ───────────────────────
+
+  /** Fetch a single record (tenant-scoped), throws if missing. */
+  async findById(tenantId: string, id: string) {
+    const [record] = await this.db
+      .select()
+      .from(attendanceRecords)
+      .where(
+        and(
+          eq(attendanceRecords.id, id),
+          eq(attendanceRecords.tenantId, tenantId),
+          isNull(attendanceRecords.deletedAt),
+        ),
+      )
+      .limit(1);
+    if (!record) {
+      throw new NotFoundException(`Attendance record "${id}" not found`);
+    }
+    return record;
+  }
+
+  /**
+   * HR/admin manual creation of an attendance record for any date (e.g. a
+   * missed punch). Rejects a duplicate for the same employee+date.
+   */
+  async manualCreate(tenantId: string, data: ManualAttendanceDto) {
+    const [employee] = await this.db
+      .select({ id: employees.id })
+      .from(employees)
+      .where(
+        and(
+          eq(employees.id, data.employeeId),
+          eq(employees.tenantId, tenantId),
+          isNull(employees.deletedAt),
+        ),
+      )
+      .limit(1);
+    if (!employee) throw new NotFoundException('Employee not found');
+
+    const [existing] = await this.db
+      .select({ id: attendanceRecords.id })
+      .from(attendanceRecords)
+      .where(
+        and(
+          eq(attendanceRecords.tenantId, tenantId),
+          eq(attendanceRecords.employeeId, data.employeeId),
+          eq(attendanceRecords.date, data.date),
+          isNull(attendanceRecords.deletedAt),
+        ),
+      )
+      .limit(1);
+    if (existing) {
+      throw new BadRequestException(
+        `An attendance record already exists for this employee on ${data.date}. Edit it instead.`,
+      );
+    }
+
+    const checkIn = data.checkIn ? new Date(data.checkIn) : null;
+    const checkOut = data.checkOut ? new Date(data.checkOut) : null;
+    let workingHours: string | null = null;
+    if (checkIn && checkOut) {
+      const diffHours = (checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60);
+      if (diffHours > 0) workingHours = diffHours.toFixed(2);
+    }
+
+    const [record] = await this.db
+      .insert(attendanceRecords)
+      .values({
+        tenantId,
+        employeeId: data.employeeId,
+        date: data.date,
+        checkIn,
+        checkOut,
+        status: data.status,
+        workingHours,
+        notes: data.notes || null,
+      })
+      .returning();
+    return record;
+  }
+
+  /** HR/admin correction of an existing attendance record. */
+  async update(tenantId: string, id: string, data: UpdateAttendanceDto) {
+    const record = await this.findById(tenantId, id);
+
+    const updateData: Record<string, unknown> = { updatedAt: new Date() };
+    if (data.date !== undefined) updateData.date = data.date;
+    if (data.status !== undefined) updateData.status = data.status;
+    if (data.notes !== undefined) updateData.notes = data.notes;
+    if (data.checkIn !== undefined) updateData.checkIn = data.checkIn ? new Date(data.checkIn) : null;
+    if (data.checkOut !== undefined) updateData.checkOut = data.checkOut ? new Date(data.checkOut) : null;
+
+    // Recompute working hours when either timestamp changed and both are present.
+    const newCheckIn = data.checkIn !== undefined ? (data.checkIn ? new Date(data.checkIn) : null) : record.checkIn;
+    const newCheckOut = data.checkOut !== undefined ? (data.checkOut ? new Date(data.checkOut) : null) : record.checkOut;
+    if (data.workingHours !== undefined) {
+      updateData.workingHours = data.workingHours;
+    } else if (newCheckIn && newCheckOut) {
+      const diffHours = (new Date(newCheckOut).getTime() - new Date(newCheckIn).getTime()) / (1000 * 60 * 60);
+      updateData.workingHours = diffHours > 0 ? diffHours.toFixed(2) : '0';
+    }
+
+    const [updated] = await this.db
+      .update(attendanceRecords)
+      .set(updateData)
+      .where(eq(attendanceRecords.id, id))
+      .returning();
+    return updated;
+  }
+
+  /** Soft-delete an attendance record (HR/admin). */
+  async softDelete(tenantId: string, id: string) {
+    await this.findById(tenantId, id);
+    await this.db
+      .update(attendanceRecords)
+      .set({ deletedAt: new Date(), updatedAt: new Date() })
+      .where(eq(attendanceRecords.id, id));
+    return { message: 'Attendance record deleted' };
   }
 
   // ─── ESS (Employee Self-Service) ────────────────────────

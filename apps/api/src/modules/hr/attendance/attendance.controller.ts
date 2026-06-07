@@ -2,6 +2,8 @@ import {
   Controller,
   Get,
   Post,
+  Put,
+  Delete,
   Body,
   Param,
   Query,
@@ -21,6 +23,7 @@ import { CurrentUser, JwtPayload } from '../../../common/decorators/current-user
 import { UuidValidationPipe } from '../../../common/pipes/uuid-validation.pipe.js';
 import { CheckInDto } from './dto/check-in.dto.js';
 import { CheckOutDto } from './dto/check-out.dto.js';
+import { ManualAttendanceDto, UpdateAttendanceDto } from './dto/manual-attendance.dto.js';
 
 @ApiTags('hr-attendance')
 @ApiBearerAuth()
@@ -80,6 +83,40 @@ export class AttendanceController {
     @Body() body: CheckOutDto,
   ) {
     return this.attendanceService.checkOut(tenantId, body);
+  }
+
+  @Post('manual')
+  @RequirePermissions('hr:write')
+  @ApiOperation({ summary: 'Manually create an attendance record (HR/admin)' })
+  @ApiResponse({ status: 201, description: 'Attendance record created' })
+  async manualCreate(
+    @CurrentTenant() tenantId: string,
+    @Body() body: ManualAttendanceDto,
+  ) {
+    return this.attendanceService.manualCreate(tenantId, body);
+  }
+
+  @Put(':id')
+  @RequirePermissions('hr:write')
+  @ApiOperation({ summary: 'Correct an attendance record (HR/admin)' })
+  @ApiResponse({ status: 200, description: 'Attendance record updated' })
+  async update(
+    @CurrentTenant() tenantId: string,
+    @Param('id', UuidValidationPipe) id: string,
+    @Body() body: UpdateAttendanceDto,
+  ) {
+    return this.attendanceService.update(tenantId, id, body);
+  }
+
+  @Delete(':id')
+  @RequirePermissions('hr:delete')
+  @ApiOperation({ summary: 'Soft-delete an attendance record (HR/admin)' })
+  @ApiResponse({ status: 200, description: 'Attendance record deleted' })
+  async remove(
+    @CurrentTenant() tenantId: string,
+    @Param('id', UuidValidationPipe) id: string,
+  ) {
+    return this.attendanceService.softDelete(tenantId, id);
   }
 
   @Get('summary/:employeeId')

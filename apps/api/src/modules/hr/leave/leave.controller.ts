@@ -2,6 +2,8 @@ import {
   Controller,
   Get,
   Post,
+  Put,
+  Delete,
   Body,
   Param,
   Query,
@@ -99,6 +101,43 @@ export class LeaveController {
     @Body() body: CreateLeaveApplicationDto,
   ) {
     return this.leaveService.createLeaveApplication(tenantId, body);
+  }
+
+  @Put('leave-applications/:id')
+  @RequirePermissions('hr:write')
+  @ApiOperation({ summary: 'Edit a leave application (pending; admin can edit reason on any)' })
+  @ApiResponse({ status: 200, description: 'Leave application updated' })
+  async updateLeaveApplication(
+    @CurrentTenant() tenantId: string,
+    @CurrentUser() user: JwtPayload,
+    @Param('id', UuidValidationPipe) id: string,
+    @Body() body: Partial<{ leaveTypeId: string; fromDate: string; toDate: string; totalDays: number; reason: string }>,
+  ) {
+    const isAdmin = (user.permissions ?? []).includes('*') || user.roleSlug === 'admin';
+    return this.leaveService.updateApplication(tenantId, id, body, isAdmin);
+  }
+
+  @Post('leave-applications/:id/cancel')
+  @RequirePermissions('hr:approve')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Cancel a leave application (restores allocation/attendance if approved)' })
+  @ApiResponse({ status: 200, description: 'Leave application cancelled' })
+  async cancelLeaveApplication(
+    @CurrentTenant() tenantId: string,
+    @Param('id', UuidValidationPipe) id: string,
+  ) {
+    return this.leaveService.cancelApplication(tenantId, id);
+  }
+
+  @Delete('leave-applications/:id')
+  @RequirePermissions('hr:delete')
+  @ApiOperation({ summary: 'Soft-delete a leave application (admin)' })
+  @ApiResponse({ status: 200, description: 'Leave application deleted' })
+  async deleteLeaveApplication(
+    @CurrentTenant() tenantId: string,
+    @Param('id', UuidValidationPipe) id: string,
+  ) {
+    return this.leaveService.softDeleteApplication(tenantId, id);
   }
 
   @Post('leave-applications/:id/approve')

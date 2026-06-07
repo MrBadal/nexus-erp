@@ -964,4 +964,150 @@ export class PayrollService {
 
     return updated;
   }
+
+  // ─── Edit / Pay / Void / Delete ─────────────────────────
+
+  private async loadEntry(tenantId: string, id: string) {
+    const [entry] = await this.db
+      .select()
+      .from(payrollEntries)
+      .where(
+        and(
+          eq(payrollEntries.id, id),
+          eq(payrollEntries.tenantId, tenantId),
+          isNull(payrollEntries.deletedAt),
+        ),
+      )
+      .limit(1);
+    if (!entry) {
+      throw new NotFoundException(`Payroll entry with ID "${id}" not found`);
+    }
+    return entry;
+  }
+
+  /**
+   * Edit the adjustable fields of a payroll entry before it is finalised.
+   * HR may edit draft/submitted; admin may additionally edit an approved
+   * entry (but not a paid one — void it first). Editing recomputes nothing
+   * deep; it adjusts the stored figures HR provides (e.g. correcting LOP).
+   */
+  async updateEntry(
+    tenantId: string,
+    id: string,
+    data: Partial<{
+      grossPay: string;
+      totalDeductions: string;
+      netPay: string;
+      workingDays: number;
+      presentDays: number;
+      lopDays: string;
+      paymentMethod: string;
+    }>,
+    isAdmin: boolean,
+  ) {
+    const entry = await this.loadEntry(tenantId, id);
+
+    const editableByHr = entry.status === 'draft' || entry.status === 'submitted';
+    const editableByAdmin = editableByHr || entry.status === 'approved';
+    if (!(isAdmin ? editableByAdmin : editableByHr)) {
+      throw new BadRequestException(
+        `Cannot edit a payroll entry with status "${entry.status}". Void it first to make changes.`,
+      );
+    }
+
+    const patch: Record<string, unknown> = { updatedAt: new Date() };
+    for (const key of ['grossPay', 'totalDeductions', 'netPay', 'lopDays', 'paymentMethod'] as const) {
+      if (data[key] !== undefined) patch[key] = data[key];
+    }
+    if (data.workingDays !== undefined) patch.workingDays = data.workingDays;
+    if (data.presentDays !== undefined) patch.presentDays = data.presentDays;
+
+    const [updated] = await this.db
+      .update(payrollEntries)
+      .set(patch)
+      .where(eq(payrollEntries.id, id))
+      .returning();
+    return updated;
+  }
+
+  /** Mark an approved payroll entry as paid. */
+  async payEntry(
+    tenantId: string,
+    id: string,
+    paymentMethod?: 'bank_transfer' | 'check' | 'cash',
+  ) {
+    const entry = await this.loadEntry(tenantId, id);
+    if (entry.status !== 'approved') {
+      throw new BadRequestException(
+        `Only an approved payroll entry can be marked paid (current status: ${entry.status})`,
+      );
+    }
+    const [updated] = await this.db
+      .update(payrollEntries)
+      .set({
+        status: 'paid',
+        paidDate: new Date().toISOString().split('T')[0],
+        paymentMethod: paymentMethod ?? entry.paymentMethod,
+        updatedAt: new Date(),
+      })
+      .where(eq(payrollEntries.id, id))
+      .returning();
+    return updated;
+  }
+
+  /**
+   * Void an approved or paid payroll entry. Emits PAYROLL_ENTRY_VOIDED so the
+   * IntegrationService reverses the posted GL journal, then resets the entry to
+   * draft and unlinks the journal so it can be corrected and re-approved.
+   */
+  async voidEntry(tenantId: string, id: string) {
+    const entry = await this.loadEntry(tenantId, id);
+    if (entry.status !== 'approved' && entry.status !== 'paid') {
+      throw new BadRequestException(
+        `Only an approved or paid payroll entry can be voided (current status: ${entry.status})`,
+      );
+    }
+
+    const journalEntryId = (entry as { journalEntryId?: string | null }).journalEntryId ?? null;
+
+    const [updated] = await this.db
+      .update(payrollEntries)
+      .set({
+        status: 'draft',
+        journalEntryId: null,
+        paidDate: null,
+        updatedAt: new Date(),
+      } as Record<string, unknown>)
+      .where(eq(payrollEntries.id, id))
+      .returning();
+
+    if (journalEntryId) {
+      this.eventEmitter.emit(EVENTS.PAYROLL_ENTRY_VOIDED, {
+        tenantId,
+        entryId: id,
+        journalEntryId,
+        period: entry.period,
+      });
+    }
+
+    return updated;
+  }
+
+  /** Soft-delete a payroll entry. Only draft/submitted; void a posted one first. */
+  async softDeleteEntry(tenantId: string, id: string, isAdmin: boolean) {
+    const entry = await this.loadEntry(tenantId, id);
+    const deletable = entry.status === 'draft' || entry.status === 'submitted';
+    if (!deletable) {
+      throw new BadRequestException(
+        `Cannot delete a payroll entry with status "${entry.status}". Void it first.`,
+      );
+    }
+    // isAdmin reserved for future finer control; both HR (hr:delete) and admin reach here.
+    void isAdmin;
+    await this.db
+      .update(payrollEntries)
+      .set({ deletedAt: new Date(), updatedAt: new Date() })
+      .where(eq(payrollEntries.id, id));
+    return { message: 'Payroll entry deleted' };
+  }
 }

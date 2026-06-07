@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Put,
+  Delete,
   Body,
   Param,
   Query,
@@ -84,5 +85,15 @@ export class AttendancePolicyController {
     @Body() body: UpdateAttendancePolicyDto,
   ) {
     return this.policyService.update(tenantId, id, body);
+  }
+
+  @Delete(':id')
+  @RequirePermissions('hr:manage_shifts')
+  @ApiOperation({ summary: 'Soft-delete an attendance policy' })
+  async remove(
+    @CurrentTenant() tenantId: string,
+    @Param('id', UuidValidationPipe) id: string,
+  ) {
+    return this.policyService.softDelete(tenantId, id);
   }
 }

@@ -12,6 +12,7 @@ import {
   leaveTypes,
   leaveAllocations,
   leaveApplications,
+  attendanceRecords,
   employees,
   type NewLeaveType,
   type NewLeaveApplication,
@@ -365,6 +366,168 @@ export class LeaveService {
     });
 
     return updated;
+  }
+
+  // ─── Edit / Cancel / Delete (HR + admin) ────────────────
+
+  private async loadApplication(tenantId: string, id: string) {
+    const [application] = await this.db
+      .select()
+      .from(leaveApplications)
+      .where(
+        and(
+          eq(leaveApplications.id, id),
+          eq(leaveApplications.tenantId, tenantId),
+          isNull(leaveApplications.deletedAt),
+        ),
+      )
+      .limit(1);
+    if (!application) {
+      throw new NotFoundException(`Leave application with ID "${id}" not found`);
+    }
+    return application;
+  }
+
+  /**
+   * When an approved leave is reversed (cancelled or deleted), give back the
+   * allocated days and soft-delete the auto-created on_leave attendance rows.
+   */
+  private async reverseApprovedLeaveEffects(
+    tenantId: string,
+    application: typeof leaveApplications.$inferSelect,
+  ) {
+    // Restore allocation used days
+    const fiscalYear = (application.approvedAt ?? new Date()).getFullYear().toString();
+    const [allocation] = await this.db
+      .select()
+      .from(leaveAllocations)
+      .where(
+        and(
+          eq(leaveAllocations.employeeId, application.employeeId),
+          eq(leaveAllocations.leaveTypeId, application.leaveTypeId),
+          eq(leaveAllocations.tenantId, tenantId),
+          eq(leaveAllocations.fiscalYear, fiscalYear),
+          isNull(leaveAllocations.deletedAt),
+        ),
+      )
+      .limit(1);
+    if (allocation) {
+      const restored = Math.max(0, allocation.usedDays - application.totalDays);
+      await this.db
+        .update(leaveAllocations)
+        .set({ usedDays: restored, updatedAt: new Date() })
+        .where(eq(leaveAllocations.id, allocation.id));
+    }
+
+    // Soft-delete the on_leave attendance records this leave generated
+    await this.db
+      .update(attendanceRecords)
+      .set({ deletedAt: new Date(), updatedAt: new Date() })
+      .where(
+        and(
+          eq(attendanceRecords.tenantId, tenantId),
+          eq(attendanceRecords.employeeId, application.employeeId),
+          eq(attendanceRecords.status, 'on_leave'),
+          sql`${attendanceRecords.date} >= ${application.fromDate}`,
+          sql`${attendanceRecords.date} <= ${application.toDate}`,
+          isNull(attendanceRecords.deletedAt),
+        ),
+      );
+  }
+
+  /**
+   * Edit a leave application. HR can edit a pending application freely; only an
+   * admin may touch a non-pending one, and then only the reason (to preserve
+   * allocation/attendance integrity — use cancel to reverse an approved leave).
+   */
+  async updateApplication(
+    tenantId: string,
+    id: string,
+    data: Partial<{ leaveTypeId: string; fromDate: string; toDate: string; totalDays: number; reason: string }>,
+    isAdmin: boolean,
+  ) {
+    const application = await this.loadApplication(tenantId, id);
+
+    if (application.status !== 'pending') {
+      if (!isAdmin) {
+        throw new BadRequestException(
+          `Only a pending leave application can be edited (current status: ${application.status}). Cancel it to reverse an approved leave.`,
+        );
+      }
+      // Admin: metadata-only edit on a non-pending application.
+      const [updated] = await this.db
+        .update(leaveApplications)
+        .set({ reason: data.reason ?? application.reason, updatedAt: new Date() })
+        .where(eq(leaveApplications.id, id))
+        .returning();
+      return updated;
+    }
+
+    const patch: Record<string, unknown> = { updatedAt: new Date() };
+    if (data.leaveTypeId !== undefined) patch.leaveTypeId = data.leaveTypeId;
+    if (data.fromDate !== undefined) patch.fromDate = data.fromDate;
+    if (data.toDate !== undefined) patch.toDate = data.toDate;
+    if (data.totalDays !== undefined) patch.totalDays = data.totalDays;
+    if (data.reason !== undefined) patch.reason = data.reason;
+
+    const [updated] = await this.db
+      .update(leaveApplications)
+      .set(patch)
+      .where(eq(leaveApplications.id, id))
+      .returning();
+    return updated;
+  }
+
+  /**
+   * Cancel a leave application (HR with hr:approve, or admin). If it was
+   * approved, restores the allocation and reverses the on_leave attendance.
+   */
+  async cancelApplication(tenantId: string, id: string) {
+    const application = await this.loadApplication(tenantId, id);
+
+    if (application.status === 'cancelled') {
+      throw new BadRequestException('Leave application is already cancelled');
+    }
+    if (application.status === 'rejected') {
+      throw new BadRequestException('A rejected leave application cannot be cancelled');
+    }
+
+    if (application.status === 'approved') {
+      await this.reverseApprovedLeaveEffects(tenantId, application);
+    }
+
+    const [updated] = await this.db
+      .update(leaveApplications)
+      .set({ status: 'cancelled', updatedAt: new Date() })
+      .where(eq(leaveApplications.id, id))
+      .returning();
+
+    this.eventEmitter.emit('hr.leave.decided', {
+      tenantId,
+      employeeId: updated.employeeId,
+      decision: 'rejected' as const,
+      fromDate: updated.fromDate,
+      toDate: updated.toDate,
+      notes: 'Leave cancelled by HR/admin',
+    });
+
+    return updated;
+  }
+
+  /**
+   * Soft-delete a leave application (admin). Reverses allocation/attendance
+   * first if it was approved.
+   */
+  async softDeleteApplication(tenantId: string, id: string) {
+    const application = await this.loadApplication(tenantId, id);
+    if (application.status === 'approved') {
+      await this.reverseApprovedLeaveEffects(tenantId, application);
+    }
+    await this.db
+      .update(leaveApplications)
+      .set({ deletedAt: new Date(), updatedAt: new Date() })
+      .where(eq(leaveApplications.id, id));
+    return { message: 'Leave application deleted' };
   }
 
   // ─── Leave Balance ──────────────────────────────────────

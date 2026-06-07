@@ -106,6 +106,8 @@ export const attendancePolicies = pgTable(
     monthlyToleranceCount: integer('monthly_tolerance_count').default(3).notNull(),
     isActive: boolean('is_active').default(true).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
   },
   (table) => [index('attendance_policies_tenant_id_idx').on(table.tenantId)],
 );

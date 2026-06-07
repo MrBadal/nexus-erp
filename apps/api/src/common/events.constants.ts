@@ -14,6 +14,7 @@ export const EVENTS = {
 
   // ── HR → Finance ─────────────────────────────────────────────────────────
   PAYROLL_ENTRY_APPROVED: 'payroll.entry.approved',
+  PAYROLL_ENTRY_VOIDED: 'payroll.entry.voided',
 
   // ── Selling → Inventory + Finance ────────────────────────────────────────
   SALES_ORDER_CONFIRMED: 'sales.order.confirmed',

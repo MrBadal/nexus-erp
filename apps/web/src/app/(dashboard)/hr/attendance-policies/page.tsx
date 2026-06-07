@@ -16,6 +16,7 @@ import {
   useActiveAttendancePolicy,
   useCreateAttendancePolicy,
   useUpdateAttendancePolicy,
+  useDeleteAttendancePolicy,
   type AttendancePolicy,
 } from '@/hooks/use-attendance-policies';
 
@@ -24,6 +25,7 @@ export default function AttendancePoliciesPage() {
   const { data: active } = useActiveAttendancePolicy();
   const createMutation = useCreateAttendancePolicy();
   const updateMutation = useUpdateAttendancePolicy();
+  const deleteMutation = useDeleteAttendancePolicy();
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState('');
@@ -98,6 +100,18 @@ export default function AttendancePoliciesPage() {
     setDeductionPerInstance(p.deductionPerInstance);
     setMonthlyToleranceCount(p.monthlyToleranceCount);
     setIsActive(p.isActive);
+  };
+
+  const handleDelete = (p: AttendancePolicy, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm(`Delete attendance policy "${p.name}"?`)) return;
+    deleteMutation.mutate(p.id, {
+      onSuccess: () => {
+        toast.success('Policy deleted');
+        if (editingId === p.id) resetForm();
+      },
+      onError: () => toast.error('Failed to delete policy'),
+    });
   };
 
   const policyList = policies ?? [];
@@ -229,10 +243,21 @@ export default function AttendancePoliciesPage() {
                           Grace {p.graceMinutes}m / Tol {p.monthlyToleranceCount}
                         </div>
                       </div>
-                      <StatusDot
-                        status={p.isActive ? 'success' : 'muted'}
-                        label={p.isActive ? 'Active' : 'Inactive'}
-                      />
+                      <div className="flex items-center gap-2">
+                        <StatusDot
+                          status={p.isActive ? 'success' : 'muted'}
+                          label={p.isActive ? 'Active' : 'Inactive'}
+                        />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-red-600 hover:text-red-700"
+                          onClick={(e) => handleDelete(p, e)}
+                          disabled={deleteMutation.isPending}
+                        >
+                          Delete
+                        </Button>
+                      </div>
                     </CardContent>
                   </Card>
                 ))}

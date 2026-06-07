@@ -428,6 +428,8 @@ export const endpoints = {
     checkIn: '/hr/attendance/check-in',
     checkOut: '/hr/attendance/check-out',
     manual: '/hr/attendance/manual',
+    update: (id: string) => `/hr/attendance/${id}`,
+    delete: (id: string) => `/hr/attendance/${id}`,
   },
   leaveApplications: {
     list: '/hr/leave-applications',
@@ -437,6 +439,7 @@ export const endpoints = {
     delete: (id: string) => `/hr/leave-applications/${id}`,
     approve: (id: string) => `/hr/leave-applications/${id}/approve`,
     reject: (id: string) => `/hr/leave-applications/${id}/reject`,
+    cancel: (id: string) => `/hr/leave-applications/${id}/cancel`,
   },
   leaveTypes: {
     list: '/hr/leave-types',
@@ -453,13 +456,14 @@ export const endpoints = {
     delete: (id: string) => `/hr/expense-claims/${id}`,
   },
   payroll: {
-    list: '/hr/payroll',
-    get: (id: string) => `/hr/payroll/${id}`,
-    generate: '/hr/payroll/generate',
-    update: (id: string) => `/hr/payroll/${id}`,
-    delete: (id: string) => `/hr/payroll/${id}`,
-    approve: (id: string) => `/hr/payroll/${id}/approve`,
-    pay: (id: string) => `/hr/payroll/${id}/pay`,
+    list: '/hr/payroll/entries',
+    get: (id: string) => `/hr/payroll/entries/${id}`,
+    generate: '/hr/payroll/process',
+    update: (id: string) => `/hr/payroll/entries/${id}`,
+    delete: (id: string) => `/hr/payroll/entries/${id}`,
+    approve: (id: string) => `/hr/payroll/entries/${id}/approve`,
+    pay: (id: string) => `/hr/payroll/entries/${id}/pay`,
+    void: (id: string) => `/hr/payroll/entries/${id}/void`,
   },
   // Recruitment
   jobOpenings: {

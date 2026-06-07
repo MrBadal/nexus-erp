@@ -88,6 +88,7 @@ export interface AttendanceRecord {
   checkOut: string;
   status: 'present' | 'absent' | 'late' | 'half_day' | 'on_leave';
   workingHours: string;
+  notes?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -260,6 +261,42 @@ export function useCheckOut() {
   });
 }
 
+export function useManualAttendance() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: Record<string, unknown>) => {
+      return post<AttendanceRecord>(endpoints.attendance.manual, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: attendanceKeys.all });
+    },
+  });
+}
+
+export function useUpdateAttendance() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Record<string, unknown> }) => {
+      return put<AttendanceRecord>(endpoints.attendance.update(id), data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: attendanceKeys.all });
+    },
+  });
+}
+
+export function useDeleteAttendance() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      await del(endpoints.attendance.delete(id));
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: attendanceKeys.all });
+    },
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Leave Applications
 // ---------------------------------------------------------------------------
@@ -339,6 +376,12 @@ export const useRejectLeave = createStatusActionHook<LeaveApplication>(
   'leaveApplications',
   'reject',
   endpoints.leaveApplications.reject,
+);
+
+export const useCancelLeave = createStatusActionHook<LeaveApplication>(
+  'leaveApplications',
+  'cancel',
+  endpoints.leaveApplications.cancel,
 );
 
 // ---------------------------------------------------------------------------
@@ -432,6 +475,18 @@ export const useApprovePayroll = createStatusActionHook<PayrollEntry>(
   'payroll',
   'approve',
   endpoints.payroll.approve,
+);
+
+export const usePayPayroll = createStatusActionHook<PayrollEntry>(
+  'payroll',
+  'pay',
+  endpoints.payroll.pay,
+);
+
+export const useVoidPayroll = createStatusActionHook<PayrollEntry>(
+  'payroll',
+  'void',
+  endpoints.payroll.void,
 );
 
 // ── Expense Claims ──────────────────────────────────────

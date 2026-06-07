@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { get, post, put } from '@/lib/api';
+import { get, post, put, del } from '@/lib/api';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -116,6 +116,17 @@ export function useUpdateAttendancePolicy() {
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: UpdateAttendancePolicyPayload }) =>
       put<AttendancePolicy>(`/hr/attendance-policies/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: attendancePolicyKeys.all });
+    },
+  });
+}
+
+export function useDeleteAttendancePolicy() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      del<{ message: string }>(`/hr/attendance-policies/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: attendancePolicyKeys.all });
     },

@@ -44,7 +44,12 @@ export class AttendancePolicyService {
     return this.db
       .select()
       .from(attendancePolicies)
-      .where(eq(attendancePolicies.tenantId, tenantId))
+      .where(
+        and(
+          eq(attendancePolicies.tenantId, tenantId),
+          isNull(attendancePolicies.deletedAt),
+        ),
+      )
       .orderBy(asc(attendancePolicies.name));
   }
 
@@ -56,6 +61,7 @@ export class AttendancePolicyService {
         and(
           eq(attendancePolicies.tenantId, tenantId),
           eq(attendancePolicies.isActive, true),
+          isNull(attendancePolicies.deletedAt),
         ),
       )
       .limit(1);
@@ -68,7 +74,11 @@ export class AttendancePolicyService {
       .select()
       .from(attendancePolicies)
       .where(
-        and(eq(attendancePolicies.id, id), eq(attendancePolicies.tenantId, tenantId)),
+        and(
+          eq(attendancePolicies.id, id),
+          eq(attendancePolicies.tenantId, tenantId),
+          isNull(attendancePolicies.deletedAt),
+        ),
       )
       .limit(1);
 
@@ -135,6 +145,7 @@ export class AttendancePolicyService {
     if (data.monthlyToleranceCount !== undefined)
       updateData.monthlyToleranceCount = data.monthlyToleranceCount;
     if (data.isActive !== undefined) updateData.isActive = data.isActive;
+    updateData.updatedAt = new Date();
 
     const [updated] = await this.db
       .update(attendancePolicies)
@@ -143,6 +154,16 @@ export class AttendancePolicyService {
       .returning();
 
     return updated;
+  }
+
+  /** Soft-delete an attendance policy (HR/admin). */
+  async softDelete(tenantId: string, id: string) {
+    await this.findById(tenantId, id);
+    await this.db
+      .update(attendancePolicies)
+      .set({ deletedAt: new Date(), updatedAt: new Date(), isActive: false })
+      .where(eq(attendancePolicies.id, id));
+    return { message: 'Attendance policy deleted' };
   }
 
   // ─── Late Deduction Computation ─────────────────────────

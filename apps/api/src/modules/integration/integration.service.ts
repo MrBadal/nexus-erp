@@ -568,6 +568,70 @@ export class IntegrationService {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // HR PAYROLL → FINANCE: Payroll Voided → Reverse the posted GL journal
+  // Creates a mirror journal with debit/credit swapped, posts it, and reverses
+  // the account balances so the ledger nets to zero for the voided payroll.
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  @OnEvent(EVENTS.PAYROLL_ENTRY_VOIDED)
+  async onPayrollEntryVoided(payload: {
+    tenantId: string;
+    entryId: string;
+    journalEntryId: string;
+    period: string;
+  }) {
+    this.logger.log(`Reversing payroll GL journal ${payload.journalEntryId} for entry ${payload.entryId}`);
+    try {
+      const original = await this.db
+        .select()
+        .from(journalLines)
+        .where(eq(journalLines.journalEntryId, payload.journalEntryId));
+
+      if (original.length === 0) {
+        this.logger.warn(`No journal lines found for ${payload.journalEntryId}; nothing to reverse`);
+        return;
+      }
+
+      const [reversal] = await this.db
+        .insert(journalEntries)
+        .values({
+          tenantId: payload.tenantId,
+          entryNumber: await this.generateJournalNumber(payload.tenantId),
+          date: new Date().toISOString().split('T')[0],
+          description: `Payroll Reversal - ${payload.period}`,
+          sourceType: 'adjustment',
+          sourceId: payload.entryId,
+          reference: `PAYROLL-VOID-${payload.period}`,
+          status: 'posted',
+          currencyCode: 'INR',
+          exchangeRate: '1',
+        })
+        .returning();
+
+      const reversedLines = original.map((l, i) => ({
+        tenantId: payload.tenantId,
+        journalEntryId: reversal.id,
+        lineNumber: i + 1,
+        accountId: l.accountId,
+        description: `Reversal: ${l.description ?? ''}`.trim(),
+        // Swap debit/credit to reverse the original posting
+        debitAmount: l.creditAmount,
+        creditAmount: l.debitAmount,
+      }));
+
+      await this.db.insert(journalLines).values(reversedLines);
+
+      for (const l of reversedLines) {
+        await this.updateAccountBalance(l.accountId, l.debitAmount, l.creditAmount);
+      }
+
+      this.logger.log(`Payroll reversal journal ${reversal.entryNumber} posted for period ${payload.period}`);
+    } catch (err) {
+      this.logger.error(`Failed to reverse payroll journal for ${payload.entryId}: ${err}`);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // CONSTRUCTION: RA Bill Certified → AR Invoice + Finance GL
   // DR: Accounts Receivable | CR: Construction Revenue + GST Payable
   // ═══════════════════════════════════════════════════════════════════════════

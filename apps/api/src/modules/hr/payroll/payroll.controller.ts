@@ -2,6 +2,8 @@ import {
   Controller,
   Get,
   Post,
+  Put,
+  Delete,
   Body,
   Param,
   Query,
@@ -140,6 +142,67 @@ export class PayrollController {
     @Param('id', UuidValidationPipe) id: string,
   ) {
     return this.payrollService.approvePayrollEntry(tenantId, id);
+  }
+
+  @Put('payroll/entries/:id')
+  @RequirePermissions('hr:write')
+  @ApiOperation({ summary: 'Edit a payroll entry (draft/submitted; admin: approved)' })
+  @ApiResponse({ status: 200, description: 'Payroll entry updated' })
+  async updatePayrollEntry(
+    @CurrentTenant() tenantId: string,
+    @CurrentUser() user: JwtPayload,
+    @Param('id', UuidValidationPipe) id: string,
+    @Body()
+    body: Partial<{
+      grossPay: string;
+      totalDeductions: string;
+      netPay: string;
+      workingDays: number;
+      presentDays: number;
+      lopDays: string;
+      paymentMethod: string;
+    }>,
+  ) {
+    const isAdmin = (user.permissions ?? []).includes('*') || user.roleSlug === 'admin';
+    return this.payrollService.updateEntry(tenantId, id, body, isAdmin);
+  }
+
+  @Post('payroll/entries/:id/pay')
+  @RequirePermissions('hr:approve')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Mark an approved payroll entry as paid' })
+  @ApiResponse({ status: 200, description: 'Payroll entry marked paid' })
+  async payPayrollEntry(
+    @CurrentTenant() tenantId: string,
+    @Param('id', UuidValidationPipe) id: string,
+    @Body() body: { paymentMethod?: 'bank_transfer' | 'check' | 'cash' } = {},
+  ) {
+    return this.payrollService.payEntry(tenantId, id, body?.paymentMethod);
+  }
+
+  @Post('payroll/entries/:id/void')
+  @RequirePermissions('hr:approve')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Void an approved/paid payroll entry (reverses the GL journal)' })
+  @ApiResponse({ status: 200, description: 'Payroll entry voided' })
+  async voidPayrollEntry(
+    @CurrentTenant() tenantId: string,
+    @Param('id', UuidValidationPipe) id: string,
+  ) {
+    return this.payrollService.voidEntry(tenantId, id);
+  }
+
+  @Delete('payroll/entries/:id')
+  @RequirePermissions('hr:delete')
+  @ApiOperation({ summary: 'Soft-delete a draft/submitted payroll entry' })
+  @ApiResponse({ status: 200, description: 'Payroll entry deleted' })
+  async deletePayrollEntry(
+    @CurrentTenant() tenantId: string,
+    @CurrentUser() user: JwtPayload,
+    @Param('id', UuidValidationPipe) id: string,
+  ) {
+    const isAdmin = (user.permissions ?? []).includes('*') || user.roleSlug === 'admin';
+    return this.payrollService.softDeleteEntry(tenantId, id, isAdmin);
   }
 }
 
