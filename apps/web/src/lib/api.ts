@@ -187,6 +187,23 @@ export async function del<T>(url: string): Promise<T> {
   return unwrap<T>(response.data);
 }
 
+/**
+ * Extract a human-readable message from an axios/API error. NestJS returns
+ * `{ message: string | string[] }` (class-validator yields an array). Falls
+ * back to the provided default when no message is available.
+ */
+export function apiErrorMessage(err: unknown, fallback = 'Something went wrong'): string {
+  const e = err as {
+    response?: { data?: { message?: string | string[] } };
+    message?: string;
+  };
+  const msg = e?.response?.data?.message;
+  if (Array.isArray(msg)) return msg.join(', ');
+  if (typeof msg === 'string' && msg.trim()) return msg;
+  if (typeof e?.message === 'string' && e.message.trim()) return e.message;
+  return fallback;
+}
+
 export function buildQueryString(params: Record<string, string | number | boolean | undefined | null>): string {
   const searchParams = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {

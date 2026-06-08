@@ -21,6 +21,7 @@ import {
   useDeleteDesignation,
   type Designation,
 } from '@/hooks/use-hr';
+import { apiErrorMessage } from '@/lib/api';
 
 interface FormData {
   name: string;
@@ -63,8 +64,7 @@ export default function DesignationsPage() {
       setErrors({});
       setOpen(false);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to create designation';
-      toast.error(msg);
+      toast.error(apiErrorMessage(err, 'Failed to create designation'));
     }
   }
 
@@ -73,8 +73,8 @@ export default function DesignationsPage() {
     try {
       await del.mutateAsync(id);
       toast.success('Designation deleted');
-    } catch {
-      toast.error('Failed to delete');
+    } catch (err: unknown) {
+      toast.error(apiErrorMessage(err, 'Failed to delete designation'));
     }
   }
 

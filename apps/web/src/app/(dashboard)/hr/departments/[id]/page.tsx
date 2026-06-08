@@ -24,6 +24,7 @@ import {
   useEmployees,
 } from '@/hooks/use-hr';
 import { formatDate } from '@/lib/utils';
+import { apiErrorMessage } from '@/lib/api';
 
 // ---------------------------------------------------------------------------
 // Component
@@ -79,18 +80,19 @@ export default function DepartmentDetailPage() {
       { id: departmentId, data: payload },
       {
         onSuccess: () => toast.success('Department saved'),
-        onError: () => toast.error('Failed to save department'),
+        onError: (err: unknown) => toast.error(apiErrorMessage(err, 'Failed to save department')),
       },
     );
   }
 
   function handleDelete() {
+    if (!confirm('Delete this department? This cannot be undone.')) return;
     deleteMutation.mutate(departmentId, {
       onSuccess: () => {
         toast.success('Department deleted');
         router.push('/hr/departments');
       },
-      onError: () => toast.error('Failed to delete department'),
+      onError: (err: unknown) => toast.error(apiErrorMessage(err, 'Failed to delete department')),
     });
   }
 

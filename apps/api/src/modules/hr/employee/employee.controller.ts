@@ -158,6 +158,18 @@ export class EmployeeController {
     return this.employeeService.getDepartmentTree(tenantId);
   }
 
+  @Get('departments/:id')
+  @RequirePermissions('hr:read')
+  @ApiOperation({ summary: 'Get a department by ID' })
+  @ApiResponse({ status: 200, description: 'Department' })
+  @ApiResponse({ status: 404, description: 'Department not found' })
+  async findDepartmentById(
+    @CurrentTenant() tenantId: string,
+    @Param('id', UuidValidationPipe) id: string,
+  ) {
+    return this.employeeService.findDepartmentById(tenantId, id);
+  }
+
   @Post('departments')
   @RequirePermissions('hr:write')
   @ApiOperation({ summary: 'Create a new department' })
@@ -182,6 +194,18 @@ export class EmployeeController {
     return this.employeeService.updateDepartment(tenantId, id, body);
   }
 
+  @Delete('departments/:id')
+  @RequirePermissions('hr:delete')
+  @ApiOperation({ summary: 'Soft-delete a department' })
+  @ApiResponse({ status: 200, description: 'Department deleted' })
+  @ApiResponse({ status: 400, description: 'Department has sub-departments or assigned employees' })
+  async deleteDepartment(
+    @CurrentTenant() tenantId: string,
+    @Param('id', UuidValidationPipe) id: string,
+  ) {
+    return this.employeeService.deleteDepartment(tenantId, id);
+  }
+
   // ─── Designations ────────────────────────────────────
 
   @Get('designations')
@@ -190,6 +214,18 @@ export class EmployeeController {
   @ApiResponse({ status: 200, description: 'List of designations' })
   async findAllDesignations(@CurrentTenant() tenantId: string) {
     return this.employeeService.findAllDesignations(tenantId);
+  }
+
+  @Get('designations/:id')
+  @RequirePermissions('hr:read')
+  @ApiOperation({ summary: 'Get a designation by ID' })
+  @ApiResponse({ status: 200, description: 'Designation' })
+  @ApiResponse({ status: 404, description: 'Designation not found' })
+  async findDesignationById(
+    @CurrentTenant() tenantId: string,
+    @Param('id', UuidValidationPipe) id: string,
+  ) {
+    return this.employeeService.findDesignationById(tenantId, id);
   }
 
   @Post('designations')
@@ -201,6 +237,30 @@ export class EmployeeController {
     @Body() body: CreateDesignationDto,
   ) {
     return this.employeeService.createDesignation(tenantId, body);
+  }
+
+  @Put('designations/:id')
+  @RequirePermissions('hr:write')
+  @ApiOperation({ summary: 'Update a designation' })
+  @ApiResponse({ status: 200, description: 'Designation updated' })
+  async updateDesignation(
+    @CurrentTenant() tenantId: string,
+    @Param('id', UuidValidationPipe) id: string,
+    @Body() body: CreateDesignationDto,
+  ) {
+    return this.employeeService.updateDesignation(tenantId, id, body);
+  }
+
+  @Delete('designations/:id')
+  @RequirePermissions('hr:delete')
+  @ApiOperation({ summary: 'Soft-delete a designation' })
+  @ApiResponse({ status: 200, description: 'Designation deleted' })
+  @ApiResponse({ status: 400, description: 'Designation in use by employees' })
+  async deleteDesignation(
+    @CurrentTenant() tenantId: string,
+    @Param('id', UuidValidationPipe) id: string,
+  ) {
+    return this.employeeService.deleteDesignation(tenantId, id);
   }
 }
 

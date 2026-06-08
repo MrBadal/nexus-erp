@@ -564,6 +564,75 @@ export class EmployeeService {
     return updated;
   }
 
+  /** Fetch a single department (tenant-scoped). Backs the edit page. */
+  async findDepartmentById(tenantId: string, id: string) {
+    const [department] = await this.db
+      .select()
+      .from(departments)
+      .where(
+        and(
+          eq(departments.id, id),
+          eq(departments.tenantId, tenantId),
+          isNull(departments.deletedAt),
+        ),
+      )
+      .limit(1);
+    if (!department) {
+      throw new NotFoundException(`Department with ID "${id}" not found`);
+    }
+    return department;
+  }
+
+  /**
+   * Soft-delete a department. Blocks (with a clear message) when the
+   * department still has sub-departments or assigned employees, so the org
+   * tree and employee records are never silently orphaned.
+   */
+  async deleteDepartment(tenantId: string, id: string) {
+    await this.findDepartmentById(tenantId, id);
+
+    const [childDept] = await this.db
+      .select({ id: departments.id })
+      .from(departments)
+      .where(
+        and(
+          eq(departments.parentId, id),
+          eq(departments.tenantId, tenantId),
+          isNull(departments.deletedAt),
+        ),
+      )
+      .limit(1);
+    if (childDept) {
+      throw new BadRequestException(
+        'This department has sub-departments. Reassign or delete them first.',
+      );
+    }
+
+    const assigned = await this.db
+      .select({ id: employees.id })
+      .from(employees)
+      .where(
+        and(
+          eq(employees.departmentId, id),
+          eq(employees.tenantId, tenantId),
+          isNull(employees.deletedAt),
+        ),
+      )
+      .limit(1);
+    if (assigned.length > 0) {
+      throw new BadRequestException(
+        'Employees are still assigned to this department. Reassign them before deleting.',
+      );
+    }
+
+    await this.db
+      .update(departments)
+      .set({ deletedAt: new Date(), updatedAt: new Date(), isActive: false })
+      .where(and(eq(departments.id, id), eq(departments.tenantId, tenantId)));
+
+    return { message: 'Department deleted' };
+  }
+
   // ─── Designations ──────────────────────────────────────
 
   async findAllDesignations(tenantId: string) {
@@ -588,6 +657,78 @@ export class EmployeeService {
       .returning();
 
     return designation;
+  }
+
+  /** Fetch a single designation (tenant-scoped). */
+  async findDesignationById(tenantId: string, id: string) {
+    const [designation] = await this.db
+      .select()
+      .from(designations)
+      .where(
+        and(
+          eq(designations.id, id),
+          eq(designations.tenantId, tenantId),
+          isNull(designations.deletedAt),
+        ),
+      )
+      .limit(1);
+    if (!designation) {
+      throw new NotFoundException(`Designation with ID "${id}" not found`);
+    }
+    return designation;
+  }
+
+  async updateDesignation(
+    tenantId: string,
+    id: string,
+    data: Partial<CreateDesignationDto>,
+  ) {
+    await this.findDesignationById(tenantId, id);
+
+    const updateData: Record<string, unknown> = { updatedAt: new Date() };
+    if (data.name !== undefined) updateData.name = data.name;
+    if (data.description !== undefined) updateData.description = data.description;
+    if (data.level !== undefined) updateData.level = data.level;
+
+    const [updated] = await this.db
+      .update(designations)
+      .set(updateData)
+      .where(and(eq(designations.id, id), eq(designations.tenantId, tenantId)))
+      .returning();
+
+    return updated;
+  }
+
+  /**
+   * Soft-delete a designation. Blocks when employees still hold it so their
+   * records aren't left pointing at a deleted designation.
+   */
+  async deleteDesignation(tenantId: string, id: string) {
+    await this.findDesignationById(tenantId, id);
+
+    const assigned = await this.db
+      .select({ id: employees.id })
+      .from(employees)
+      .where(
+        and(
+          eq(employees.designationId, id),
+          eq(employees.tenantId, tenantId),
+          isNull(employees.deletedAt),
+        ),
+      )
+      .limit(1);
+    if (assigned.length > 0) {
+      throw new BadRequestException(
+        'Employees still hold this designation. Reassign them before deleting.',
+      );
+    }
+
+    await this.db
+      .update(designations)
+      .set({ deletedAt: new Date(), updatedAt: new Date() })
+      .where(and(eq(designations.id, id), eq(designations.tenantId, tenantId)));
+
+    return { message: 'Designation deleted' };
   }
 
   // ─── Org chart / team ───────────────────────────────────
