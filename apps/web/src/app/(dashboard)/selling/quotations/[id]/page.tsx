@@ -23,6 +23,7 @@ import {
   type SalesOrderLine,
 } from '@/hooks/use-selling';
 import { formatCurrency, formatDate } from '@/lib/utils';
+import { apiErrorMessage } from '@/lib/api';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -136,7 +137,7 @@ export default function QuotationDetailPage() {
       },
       {
         onSuccess: () => toast.success('Quotation saved'),
-        onError: () => toast.error('Failed to save quotation'),
+        onError: (err) => toast.error(apiErrorMessage(err, 'Failed to save quotation')),
       },
     );
   }
@@ -144,14 +145,14 @@ export default function QuotationDetailPage() {
   function handleSend() {
     sendMutation.mutate(quotationId, {
       onSuccess: () => toast.success('Quotation sent to customer'),
-      onError: () => toast.error('Failed to send quotation'),
+      onError: (err) => toast.error(apiErrorMessage(err, 'Failed to send quotation')),
     });
   }
 
   function handleAccept() {
     acceptMutation.mutate(quotationId, {
       onSuccess: () => toast.success('Quotation accepted'),
-      onError: () => toast.error('Failed to accept quotation'),
+      onError: (err) => toast.error(apiErrorMessage(err, 'Failed to accept quotation')),
     });
   }
 
@@ -159,7 +160,7 @@ export default function QuotationDetailPage() {
     if (!confirm('Mark this quotation as rejected?')) return;
     rejectMutation.mutate(quotationId, {
       onSuccess: () => toast.success('Quotation rejected'),
-      onError: () => toast.error('Failed to reject quotation'),
+      onError: (err) => toast.error(apiErrorMessage(err, 'Failed to reject quotation')),
     });
   }
 
@@ -170,7 +171,7 @@ export default function QuotationDetailPage() {
         toast.success('Quotation deleted');
         router.push('/selling/quotations');
       },
-      onError: () => toast.error('Failed to delete quotation'),
+      onError: (err) => toast.error(apiErrorMessage(err, 'Failed to delete quotation')),
     });
   }
 
@@ -180,7 +181,7 @@ export default function QuotationDetailPage() {
         toast.success('Quotation converted to sales order');
         router.push(`/selling/sales-orders/${newOrder.id}`);
       },
-      onError: () => toast.error('Failed to convert quotation'),
+      onError: (err) => toast.error(apiErrorMessage(err, 'Failed to convert quotation')),
     });
   }
 

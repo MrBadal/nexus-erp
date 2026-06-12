@@ -18,6 +18,7 @@ import {
   type DeliveryNote,
 } from '@/hooks/use-selling';
 import { formatDate } from '@/lib/utils';
+import { apiErrorMessage } from '@/lib/api';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -91,7 +92,7 @@ export default function DeliveryNoteDetailPage() {
       },
       {
         onSuccess: () => toast.success('Delivery note saved'),
-        onError: () => toast.error('Failed to save delivery note'),
+        onError: (err) => toast.error(apiErrorMessage(err, 'Failed to save delivery note')),
       },
     );
   }
@@ -99,14 +100,14 @@ export default function DeliveryNoteDetailPage() {
   function handleDispatch() {
     dispatchMutation.mutate(deliveryNoteId, {
       onSuccess: () => toast.success('Delivery note dispatched'),
-      onError: () => toast.error('Failed to dispatch delivery note'),
+      onError: (err) => toast.error(apiErrorMessage(err, 'Failed to dispatch delivery note')),
     });
   }
 
   function handleCompleteDelivery() {
     deliverMutation.mutate(deliveryNoteId, {
       onSuccess: () => toast.success('Delivery completed'),
-      onError: () => toast.error('Failed to complete delivery'),
+      onError: (err) => toast.error(apiErrorMessage(err, 'Failed to complete delivery')),
     });
   }
 

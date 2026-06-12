@@ -32,6 +32,7 @@ import {
 } from '@/hooks/use-salary-revisions';
 import { useEmployees, type Employee } from '@/hooks/use-hr';
 import { formatDate } from '@/lib/utils';
+import { apiErrorMessage } from '@/lib/api';
 
 const ALL_EMPLOYEES = '__all__';
 
@@ -107,7 +108,7 @@ export default function SalaryRevisionsPage() {
         toast.success('Salary revision created');
         setDialogOpen(false);
       },
-      onError: () => toast.error('Failed to create salary revision'),
+      onError: (err) => toast.error(apiErrorMessage(err, 'Failed to create salary revision')),
     });
   };
 
@@ -115,7 +116,7 @@ export default function SalaryRevisionsPage() {
     if (!window.confirm('Delete this salary revision?')) return;
     deleteMutation.mutate(id, {
       onSuccess: () => toast.success('Salary revision deleted'),
-      onError: () => toast.error('Failed to delete salary revision'),
+      onError: (err) => toast.error(apiErrorMessage(err, 'Failed to delete salary revision')),
     });
   };
 

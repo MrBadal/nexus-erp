@@ -28,6 +28,9 @@ import {
 } from '../../database/schema/index.js';
 import { EVENTS } from '../../common/events.constants.js';
 
+/** Drizzle transaction handle — lets helpers run inside or outside a transaction. */
+type DbTx = Parameters<Parameters<DrizzleDB['transaction']>[0]>[0];
+
 // ─── Event Payload Interfaces ────────────────────────────────────────────────
 
 interface InvoiceConfirmedPayload {
@@ -210,7 +213,7 @@ export class IntegrationService {
 
       // Update account balances
       for (const l of entryLines) {
-        await this.updateAccountBalance(l.accountId, l.debitAmount, l.creditAmount);
+        await this.updateAccountBalance(this.db, l.accountId, l.debitAmount, l.creditAmount);
       }
 
       // Link journal entry back to invoice
@@ -415,7 +418,7 @@ export class IntegrationService {
       await this.db.insert(journalLines).values(jLines);
 
       for (const l of jLines) {
-        await this.updateAccountBalance(l.accountId, l.debitAmount, l.creditAmount);
+        await this.updateAccountBalance(this.db, l.accountId, l.debitAmount, l.creditAmount);
       }
 
       this.logger.log(`AP accrual journal ${entry.entryNumber} posted for GRN ${payload.receiptNumber}`);
@@ -512,54 +515,61 @@ export class IntegrationService {
         amount: remainingCredit,
       });
 
-      const [entry] = await this.db
-        .insert(journalEntries)
-        .values({
-          tenantId: payload.tenantId,
-          entryNumber: await this.generateJournalNumber(payload.tenantId),
-          date: `${payload.period}-01`,
-          description: `Payroll Journal - ${payload.period}`,
-          sourceType: 'adjustment',
-          sourceId: payload.entryId,
-          reference: `PAYROLL-${payload.period}`,
-          status: 'posted',
-          currencyCode: 'INR',
-          exchangeRate: '1',
-        })
-        .returning();
+      const entryNumber = await this.generateJournalNumber(payload.tenantId);
 
-      const jLines = [
-        {
-          tenantId: payload.tenantId,
-          journalEntryId: entry.id,
-          lineNumber: 1,
-          accountId: salaryExpenseAccount.id,
-          description: `Gross Salary - ${payload.period}`,
-          debitAmount: grossPay.toFixed(4),
-          creditAmount: '0',
-        },
-        ...creditLines.map((l, i) => ({
-          tenantId: payload.tenantId,
-          journalEntryId: entry.id,
-          lineNumber: i + 2,
-          accountId: l.accountId,
-          description: l.description,
-          debitAmount: '0',
-          creditAmount: l.amount.toFixed(4),
-        })),
-      ];
+      // Atomic: journal entry + lines + account balances + payroll link commit together
+      const entry = await this.db.transaction(async (tx) => {
+        const [created] = await tx
+          .insert(journalEntries)
+          .values({
+            tenantId: payload.tenantId,
+            entryNumber,
+            date: `${payload.period}-01`,
+            description: `Payroll Journal - ${payload.period}`,
+            sourceType: 'adjustment',
+            sourceId: payload.entryId,
+            reference: `PAYROLL-${payload.period}`,
+            status: 'posted',
+            currencyCode: 'INR',
+            exchangeRate: '1',
+          })
+          .returning();
 
-      await this.db.insert(journalLines).values(jLines);
+        const jLines = [
+          {
+            tenantId: payload.tenantId,
+            journalEntryId: created.id,
+            lineNumber: 1,
+            accountId: salaryExpenseAccount.id,
+            description: `Gross Salary - ${payload.period}`,
+            debitAmount: grossPay.toFixed(4),
+            creditAmount: '0',
+          },
+          ...creditLines.map((l, i) => ({
+            tenantId: payload.tenantId,
+            journalEntryId: created.id,
+            lineNumber: i + 2,
+            accountId: l.accountId,
+            description: l.description,
+            debitAmount: '0',
+            creditAmount: l.amount.toFixed(4),
+          })),
+        ];
 
-      for (const l of jLines) {
-        await this.updateAccountBalance(l.accountId, l.debitAmount, l.creditAmount);
-      }
+        await tx.insert(journalLines).values(jLines);
 
-      // Link journal to payroll entry
-      await this.db
-        .update(payrollEntries)
-        .set({ journalEntryId: entry.id } as any)
-        .where(eq(payrollEntries.id, payload.entryId));
+        for (const l of jLines) {
+          await this.updateAccountBalance(tx, l.accountId, l.debitAmount, l.creditAmount);
+        }
+
+        // Link journal to payroll entry
+        await tx
+          .update(payrollEntries)
+          .set({ journalEntryId: created.id } as any)
+          .where(eq(payrollEntries.id, payload.entryId));
+
+        return created;
+      });
 
       this.logger.log(`Payroll journal ${entry.entryNumber} posted for period ${payload.period}`);
     } catch (err) {
@@ -592,38 +602,45 @@ export class IntegrationService {
         return;
       }
 
-      const [reversal] = await this.db
-        .insert(journalEntries)
-        .values({
+      const entryNumber = await this.generateJournalNumber(payload.tenantId);
+
+      // Atomic: reversal journal + lines + account balances commit together
+      const reversal = await this.db.transaction(async (tx) => {
+        const [created] = await tx
+          .insert(journalEntries)
+          .values({
+            tenantId: payload.tenantId,
+            entryNumber,
+            date: new Date().toISOString().split('T')[0],
+            description: `Payroll Reversal - ${payload.period}`,
+            sourceType: 'adjustment',
+            sourceId: payload.entryId,
+            reference: `PAYROLL-VOID-${payload.period}`,
+            status: 'posted',
+            currencyCode: 'INR',
+            exchangeRate: '1',
+          })
+          .returning();
+
+        const reversedLines = original.map((l, i) => ({
           tenantId: payload.tenantId,
-          entryNumber: await this.generateJournalNumber(payload.tenantId),
-          date: new Date().toISOString().split('T')[0],
-          description: `Payroll Reversal - ${payload.period}`,
-          sourceType: 'adjustment',
-          sourceId: payload.entryId,
-          reference: `PAYROLL-VOID-${payload.period}`,
-          status: 'posted',
-          currencyCode: 'INR',
-          exchangeRate: '1',
-        })
-        .returning();
+          journalEntryId: created.id,
+          lineNumber: i + 1,
+          accountId: l.accountId,
+          description: `Reversal: ${l.description ?? ''}`.trim(),
+          // Swap debit/credit to reverse the original posting
+          debitAmount: l.creditAmount,
+          creditAmount: l.debitAmount,
+        }));
 
-      const reversedLines = original.map((l, i) => ({
-        tenantId: payload.tenantId,
-        journalEntryId: reversal.id,
-        lineNumber: i + 1,
-        accountId: l.accountId,
-        description: `Reversal: ${l.description ?? ''}`.trim(),
-        // Swap debit/credit to reverse the original posting
-        debitAmount: l.creditAmount,
-        creditAmount: l.debitAmount,
-      }));
+        await tx.insert(journalLines).values(reversedLines);
 
-      await this.db.insert(journalLines).values(reversedLines);
+        for (const l of reversedLines) {
+          await this.updateAccountBalance(tx, l.accountId, l.debitAmount, l.creditAmount);
+        }
 
-      for (const l of reversedLines) {
-        await this.updateAccountBalance(l.accountId, l.debitAmount, l.creditAmount);
-      }
+        return created;
+      });
 
       this.logger.log(`Payroll reversal journal ${reversal.entryNumber} posted for period ${payload.period}`);
     } catch (err) {
@@ -707,7 +724,7 @@ export class IntegrationService {
       );
 
       for (const l of jLineValues) {
-        await this.updateAccountBalance(l.accountId, l.debitAmount, l.creditAmount);
+        await this.updateAccountBalance(this.db, l.accountId, l.debitAmount, l.creditAmount);
       }
 
       this.logger.log(`AR journal ${entry.entryNumber} posted for RA Bill ${payload.billNumber}`);
@@ -813,7 +830,7 @@ export class IntegrationService {
       );
 
       for (const l of allLines) {
-        await this.updateAccountBalance(l.accountId, l.debitAmount, l.creditAmount);
+        await this.updateAccountBalance(this.db, l.accountId, l.debitAmount, l.creditAmount);
       }
 
       this.logger.log(`AP+TDS journal ${entry.entryNumber} posted for WO payment ${payload.paymentNumber}`);
@@ -960,7 +977,7 @@ export class IntegrationService {
       await this.db.insert(journalLines).values(jLines);
 
       for (const l of jLines) {
-        await this.updateAccountBalance(l.accountId, l.debitAmount, l.creditAmount);
+        await this.updateAccountBalance(this.db, l.accountId, l.debitAmount, l.creditAmount);
       }
 
       this.logger.log(`WIP journal ${entry.entryNumber} posted for site material issue ${payload.issueId}`);
@@ -1106,7 +1123,7 @@ export class IntegrationService {
       await this.db.insert(journalLines).values(jLines);
 
       for (const l of jLines) {
-        await this.updateAccountBalance(l.accountId, l.debitAmount, l.creditAmount);
+        await this.updateAccountBalance(this.db, l.accountId, l.debitAmount, l.creditAmount);
       }
 
       this.logger.log(`COGS journal ${entry.entryNumber} posted for delivery ${payload.deliveryNumber}`);
@@ -1295,7 +1312,7 @@ export class IntegrationService {
       await this.db.insert(journalLines).values(jLines);
 
       for (const l of jLines) {
-        await this.updateAccountBalance(l.accountId, l.debitAmount, l.creditAmount);
+        await this.updateAccountBalance(this.db, l.accountId, l.debitAmount, l.creditAmount);
       }
 
       this.logger.log(`Production journal ${entry.entryNumber} posted for WO ${payload.workOrderNumber}`);
@@ -1449,6 +1466,7 @@ export class IntegrationService {
   }
 
   private async updateAccountBalance(
+    db: DrizzleDB | DbTx,
     accountId: string,
     debitAmount: string,
     creditAmount: string,
@@ -1456,7 +1474,7 @@ export class IntegrationService {
     const debit = parseFloat(debitAmount || '0');
     const credit = parseFloat(creditAmount || '0');
 
-    const [account] = await this.db
+    const [account] = await db
       .select({ normalBalance: accounts.normalBalance, currentBalance: accounts.currentBalance })
       .from(accounts)
       .where(eq(accounts.id, accountId))
@@ -1473,7 +1491,7 @@ export class IntegrationService {
       newBalance = bal + credit - debit;
     }
 
-    await this.db
+    await db
       .update(accounts)
       .set({ currentBalance: newBalance.toFixed(4), updatedAt: new Date() })
       .where(eq(accounts.id, accountId));

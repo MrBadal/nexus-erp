@@ -1,5 +1,7 @@
 'use client';
 
+import { apiErrorMessage } from '@/lib/api';
+
 import { useState, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -206,7 +208,7 @@ export default function PurchaseOrderDetailPage() {
       },
       {
         onSuccess: () => toast.success('Purchase order saved'),
-        onError: () => toast.error('Failed to save purchase order'),
+        onError: (err) => toast.error(apiErrorMessage(err, 'Failed to save purchase order')),
       },
     );
   }
@@ -214,21 +216,21 @@ export default function PurchaseOrderDetailPage() {
   function handleSubmit() {
     submitMutation.mutate(poId, {
       onSuccess: () => toast.success('Purchase order submitted for approval'),
-      onError: () => toast.error('Failed to submit purchase order'),
+      onError: (err) => toast.error(apiErrorMessage(err, 'Failed to submit purchase order')),
     });
   }
 
   function handleApprove() {
     approveMutation.mutate(poId, {
       onSuccess: () => toast.success('Purchase order approved'),
-      onError: () => toast.error('Failed to approve purchase order'),
+      onError: (err) => toast.error(apiErrorMessage(err, 'Failed to approve purchase order')),
     });
   }
 
   function handleReject() {
     cancelMutation.mutate(poId, {
       onSuccess: () => toast.success('Purchase order rejected'),
-      onError: () => toast.error('Failed to reject purchase order'),
+      onError: (err) => toast.error(apiErrorMessage(err, 'Failed to reject purchase order')),
     });
   }
 
@@ -240,7 +242,7 @@ export default function PurchaseOrderDetailPage() {
   function handleCancel() {
     cancelMutation.mutate(poId, {
       onSuccess: () => toast.success('Purchase order cancelled'),
-      onError: () => toast.error('Failed to cancel purchase order'),
+      onError: (err) => toast.error(apiErrorMessage(err, 'Failed to cancel purchase order')),
     });
   }
 
@@ -250,7 +252,7 @@ export default function PurchaseOrderDetailPage() {
         toast.success('Purchase order deleted');
         router.push('/buying/purchase-orders');
       },
-      onError: () => toast.error('Failed to delete purchase order'),
+      onError: (err) => toast.error(apiErrorMessage(err, 'Failed to delete purchase order')),
     });
   }
 

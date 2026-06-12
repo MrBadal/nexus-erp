@@ -1,5 +1,7 @@
 'use client';
 
+import { apiErrorMessage } from '@/lib/api';
+
 import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -170,8 +172,8 @@ export default function JournalEntriesPage() {
       try {
         await Promise.all(drafts.map((d) => postMutation.mutateAsync(d.id)));
         toast.success(`Posted ${drafts.length} journal ${drafts.length === 1 ? 'entry' : 'entries'}`);
-      } catch {
-        toast.error('Failed to post some entries');
+      } catch (err) {
+        toast.error(apiErrorMessage(err, 'Failed to post some entries'));
       }
     },
     [postMutation],

@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { FileUpload } from '@/components/ui/file-upload';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -43,9 +44,9 @@ export default function EssDocumentsPage() {
   const { data, isLoading } = useMyDocuments();
   const uploadMutation = useUploadMyDocument();
 
-  // Upload form state — file uploads are stubbed (admin pastes a URL after
-  // uploading via their own preferred storage). Real MinIO/S3 streaming is a
-  // future enhancement; for now this gives employees a working flow.
+  // Upload form state — files are uploaded directly to Google Cloud Storage
+  // via /ess/files/upload-document, which fills `fileUrl` with the stored
+  // object path. Pasting an external URL remains available as a fallback.
   const [uploadForm, setUploadForm] = useState<{
     type: EmployeeDocumentType;
     name: string;
@@ -143,18 +144,30 @@ export default function EssDocumentsPage() {
               />
             </div>
             <div className="space-y-2 md:col-span-2">
-              <Label>File URL *</Label>
+              <Label>File *</Label>
+              <FileUpload
+                endpoint="/ess/files/upload-document"
+                accept="image/png,image/jpeg,image/webp,image/svg+xml,application/pdf,.doc,.docx"
+                maxSizeMb={10}
+                label="Choose & upload file"
+                onUploaded={(res) =>
+                  setUploadForm((f) => ({
+                    ...f,
+                    fileUrl: res.path ?? res.url ?? '',
+                  }))
+                }
+              />
               <Input
                 value={uploadForm.fileUrl}
                 onChange={(e) =>
                   setUploadForm((f) => ({ ...f, fileUrl: e.target.value }))
                 }
-                placeholder="https://..."
+                placeholder="…or paste an external link (https://...)"
               />
               <p className="text-xs text-muted-foreground">
-                Paste a publicly accessible URL or your company storage link
-                here. Direct file uploads to MinIO/S3 will be enabled in a
-                later release.
+                Upload your file directly (stored securely), or paste an
+                external link as a fallback. Then press &quot;Upload
+                document&quot; below to save it.
               </p>
             </div>
             <div className="space-y-2 md:col-span-2">

@@ -1,5 +1,7 @@
 'use client';
 
+import { apiErrorMessage } from '@/lib/api';
+
 import { useState, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
@@ -206,8 +208,8 @@ export default function NewInvoicePage() {
           toast.success('Invoice created');
           router.push(`/finance/invoices/${data.id}`);
         },
-        onError: () => {
-          toast.error('Failed to create invoice');
+        onError: (err) => {
+          toast.error(apiErrorMessage(err, 'Failed to create invoice'));
         },
       },
     );

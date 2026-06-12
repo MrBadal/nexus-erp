@@ -1,5 +1,7 @@
 'use client';
 
+import { apiErrorMessage } from '@/lib/api';
+
 import { useParams, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { FormPage } from '@/components/layout/form-page';
@@ -174,14 +176,14 @@ export default function PayrollDetailPage() {
   function handleApprove() {
     approveMutation.mutate(payrollId, {
       onSuccess: () => toast.success('Payroll approved'),
-      onError: () => toast.error('Failed to approve payroll'),
+      onError: (err) => toast.error(apiErrorMessage(err, 'Failed to approve payroll')),
     });
   }
 
   function handlePay() {
     payMutation.mutate(payrollId, {
       onSuccess: () => toast.success('Payroll marked as paid'),
-      onError: () => toast.error('Failed to mark payroll as paid'),
+      onError: (err) => toast.error(apiErrorMessage(err, 'Failed to mark payroll as paid')),
     });
   }
 
@@ -189,7 +191,7 @@ export default function PayrollDetailPage() {
     if (!confirm('Void this payroll entry? This reverses the posted accounting journal and returns the entry to draft.')) return;
     voidMutation.mutate(payrollId, {
       onSuccess: () => toast.success('Payroll voided and GL journal reversed'),
-      onError: () => toast.error('Failed to void payroll'),
+      onError: (err) => toast.error(apiErrorMessage(err, 'Failed to void payroll')),
     });
   }
 
@@ -200,7 +202,7 @@ export default function PayrollDetailPage() {
         toast.success('Payroll entry deleted');
         router.push('/hr/payroll');
       },
-      onError: () => toast.error('Failed to delete payroll entry'),
+      onError: (err) => toast.error(apiErrorMessage(err, 'Failed to delete payroll entry')),
     });
   }
 

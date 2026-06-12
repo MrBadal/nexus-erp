@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAttendance, useUpdateAttendance, useDeleteAttendance } from '@/hooks/use-hr';
+import { apiErrorMessage } from '@/lib/api';
 
 const STATUS_OPTIONS = ['present', 'absent', 'half_day', 'late', 'on_leave'] as const;
 
@@ -73,7 +74,7 @@ export default function AttendanceDetailPage() {
       { id: recordId, data: { status, notes } },
       {
         onSuccess: () => toast.success('Attendance record updated'),
-        onError: () => toast.error('Failed to update attendance record'),
+        onError: (err) => toast.error(apiErrorMessage(err, 'Failed to update attendance record')),
       },
     );
   }
@@ -85,7 +86,7 @@ export default function AttendanceDetailPage() {
         toast.success('Attendance record deleted');
         router.push('/hr/attendance');
       },
-      onError: () => toast.error('Failed to delete attendance record'),
+      onError: (err) => toast.error(apiErrorMessage(err, 'Failed to delete attendance record')),
     });
   }
 

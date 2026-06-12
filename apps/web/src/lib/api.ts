@@ -69,9 +69,31 @@ function clearAuthAndRedirect() {
   }
 }
 
+/**
+ * Replace axios's generic "Request failed with status code NNN" with the
+ * backend's actual message (NestJS returns `{ message: string | string[] }`)
+ * so `err.message` is meaningful everywhere — toasts, catch blocks, logs.
+ * The original axios error shape (response, status, config) is preserved.
+ */
+function normalizeErrorMessage(error: AxiosError): AxiosError {
+  const data = error.response?.data as
+    | { message?: string | string[]; error?: string }
+    | undefined;
+  const msg = data?.message;
+  if (Array.isArray(msg) && msg.length > 0) {
+    error.message = msg.join(", ");
+  } else if (typeof msg === "string" && msg.trim()) {
+    error.message = msg;
+  } else if (typeof data?.error === "string" && data.error.trim()) {
+    error.message = data.error;
+  }
+  return error;
+}
+
 api.interceptors.response.use(
   (response: AxiosResponse) => response,
-  async (error: AxiosError<ApiResponse<null>>) => {
+  async (rawError: AxiosError<ApiResponse<null>>) => {
+    const error = normalizeErrorMessage(rawError);
     const original = error.config as
       | (NonNullable<AxiosError["config"]> & { _retry?: boolean })
       | undefined;
@@ -566,6 +588,16 @@ export const endpoints = {
     delete: '/settings/smtp',
     testConnection: '/settings/smtp/test-connection',
     testSend: '/settings/smtp/test-send',
+  },
+  branding: {
+    get: '/settings/branding',
+    update: '/settings/branding',
+    public: (slug: string) => `/auth/branding/${slug}`,
+  },
+  files: {
+    uploadBranding: '/files/upload/branding',
+    uploadDocument: '/files/upload/document',
+    signed: (path: string) => `/files/signed?path=${encodeURIComponent(path)}`,
   },
   // CRM
   contacts: {

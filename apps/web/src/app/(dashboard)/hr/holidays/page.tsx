@@ -1,5 +1,7 @@
 'use client';
 
+import { apiErrorMessage } from '@/lib/api';
+
 import { useMemo, useState } from 'react';
 import { Plus, Calendar as CalendarIcon, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -173,7 +175,7 @@ export default function HolidaysPage() {
         toast.success('Holiday created');
         setDialogOpen(false);
       },
-      onError: () => toast.error('Failed to create holiday'),
+      onError: (err) => toast.error(apiErrorMessage(err, 'Failed to create holiday')),
     });
   };
 
@@ -181,7 +183,7 @@ export default function HolidaysPage() {
     if (!window.confirm('Delete this holiday?')) return;
     deleteMutation.mutate(id, {
       onSuccess: () => toast.success('Holiday deleted'),
-      onError: () => toast.error('Failed to delete holiday'),
+      onError: (err) => toast.error(apiErrorMessage(err, 'Failed to delete holiday')),
     });
   };
 

@@ -21,7 +21,8 @@ import { formatCurrency } from '@/lib/utils';
 interface RevenueExpenseDataPoint {
   month: string;
   revenue: number;
-  expenses: number;
+  /** Optional — when absent the expenses series is not drawn. */
+  expenses?: number;
 }
 
 interface RevenueExpenseChartProps {
@@ -58,10 +59,14 @@ function ChartTooltipContent({
 }
 
 export function RevenueExpenseChart({ data, className }: RevenueExpenseChartProps) {
+  const hasExpenses = data.some((d) => typeof d.expenses === 'number');
+
   return (
     <Card className={className}>
       <CardHeader>
-        <CardTitle className="text-base">Revenue vs Expenses</CardTitle>
+        <CardTitle className="text-base">
+          {hasExpenses ? 'Revenue vs Expenses' : 'Revenue'}
+        </CardTitle>
         <CardDescription>Last 12 months</CardDescription>
       </CardHeader>
       <CardContent>
@@ -110,13 +115,15 @@ export function RevenueExpenseChart({ data, className }: RevenueExpenseChartProp
                 fill="url(#colorRevenue)"
                 strokeWidth={2}
               />
-              <Area
-                type="monotone"
-                dataKey="expenses"
-                stroke="hsl(var(--destructive))"
-                fill="url(#colorExpenses)"
-                strokeWidth={2}
-              />
+              {hasExpenses && (
+                <Area
+                  type="monotone"
+                  dataKey="expenses"
+                  stroke="hsl(var(--destructive))"
+                  fill="url(#colorExpenses)"
+                  strokeWidth={2}
+                />
+              )}
             </AreaChart>
           </ResponsiveContainer>
         </div>

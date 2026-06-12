@@ -22,6 +22,7 @@ import {
   type SalesOrderLine,
 } from '@/hooks/use-selling';
 import { formatCurrency, formatDate } from '@/lib/utils';
+import { apiErrorMessage } from '@/lib/api';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -138,7 +139,7 @@ export default function SalesOrderDetailPage() {
       },
       {
         onSuccess: () => toast.success('Sales order saved'),
-        onError: () => toast.error('Failed to save sales order'),
+        onError: (err) => toast.error(apiErrorMessage(err, 'Failed to save sales order')),
       },
     );
   }
@@ -146,7 +147,7 @@ export default function SalesOrderDetailPage() {
   function handleConfirm() {
     confirmMutation.mutate(orderId, {
       onSuccess: () => toast.success('Sales order confirmed'),
-      onError: () => toast.error('Failed to confirm sales order'),
+      onError: (err) => toast.error(apiErrorMessage(err, 'Failed to confirm sales order')),
     });
   }
 
@@ -154,7 +155,7 @@ export default function SalesOrderDetailPage() {
     if (!confirm('Cancel this sales order?')) return;
     cancelMutation.mutate(orderId, {
       onSuccess: () => toast.success('Sales order cancelled'),
-      onError: () => toast.error('Failed to cancel sales order'),
+      onError: (err) => toast.error(apiErrorMessage(err, 'Failed to cancel sales order')),
     });
   }
 
@@ -165,7 +166,7 @@ export default function SalesOrderDetailPage() {
         toast.success('Sales order deleted');
         router.push('/selling/sales-orders');
       },
-      onError: () => toast.error('Failed to delete sales order'),
+      onError: (err) => toast.error(apiErrorMessage(err, 'Failed to delete sales order')),
     });
   }
 
@@ -175,7 +176,7 @@ export default function SalesOrderDetailPage() {
       { salesOrderId: orderId, customerId: order.customerId },
       {
         onSuccess: () => toast.success('Delivery note created'),
-        onError: () => toast.error('Failed to create delivery note'),
+        onError: (err) => toast.error(apiErrorMessage(err, 'Failed to create delivery note')),
       },
     );
   }

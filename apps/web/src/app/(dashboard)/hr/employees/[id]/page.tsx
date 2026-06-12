@@ -1,5 +1,7 @@
 'use client';
 
+import { apiErrorMessage } from '@/lib/api';
+
 import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
@@ -18,6 +20,7 @@ import {
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
+import { FileUpload } from '@/components/ui/file-upload';
 import {
   useEmployee,
   useUpdateEmployee,
@@ -34,6 +37,7 @@ import {
   useEmployeeDocuments,
   useCreateEmployeeDocument,
   useDeleteEmployeeDocument,
+  resolveDocumentUrl,
   EMPLOYEE_DOCUMENT_TYPE_LABELS,
   type EmployeeDocumentType,
 } from '@/hooks/use-employee-documents';
@@ -178,9 +182,24 @@ function DocumentsTab({ employeeId }: { employeeId: string }) {
           <Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="e.g. Offer Letter — Mar 2026" />
         </div>
         <div className="space-y-1 md:col-span-2">
-          <label className="text-xs font-medium">File URL *</label>
-          <Input value={form.fileUrl} onChange={(e) => setForm((f) => ({ ...f, fileUrl: e.target.value }))} placeholder="https://..." />
-          <p className="text-[11px] text-muted-foreground">Paste a public/cloud URL for the document. Direct upload coming soon.</p>
+          <label className="text-xs font-medium">File *</label>
+          <FileUpload
+            endpoint="/files/upload/document"
+            accept="image/png,image/jpeg,image/webp,image/svg+xml,application/pdf,.doc,.docx"
+            maxSizeMb={10}
+            label="Upload file"
+            onUploaded={(res) =>
+              setForm((f) => ({ ...f, fileUrl: res.path ?? res.url ?? '' }))
+            }
+          />
+          <Input
+            value={form.fileUrl}
+            onChange={(e) => setForm((f) => ({ ...f, fileUrl: e.target.value }))}
+            placeholder="…or paste an external link (https://...)"
+          />
+          <p className="text-[11px] text-muted-foreground">
+            Upload a file (stored securely in cloud storage), or paste an external URL as a fallback.
+          </p>
         </div>
         <div className="space-y-1 md:col-span-2">
           <label className="text-xs font-medium">Notes (optional)</label>
@@ -227,14 +246,16 @@ function DocumentsTab({ employeeId }: { employeeId: string }) {
                 <td className="px-4 py-2">{d.visibleToEmployee ? 'Yes' : 'No'}</td>
                 <td className="px-4 py-2 text-muted-foreground">{formatDate(d.uploadedAt)}</td>
                 <td className="px-4 py-2 text-right">
-                  <a
-                    href={d.fileUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <button
+                    onClick={() => {
+                      void resolveDocumentUrl(d.fileUrl)
+                        .then((url) => window.open(url, '_blank', 'noopener,noreferrer'))
+                        .catch((e: Error) => toast.error(apiErrorMessage(e, 'Failed to open document')));
+                    }}
                     className="mr-3 text-xs text-primary underline"
                   >
                     Open
-                  </a>
+                  </button>
                   <button
                     onClick={() => {
                       if (confirm(`Delete "${d.name}"?`)) {
@@ -1083,7 +1104,7 @@ export default function EmployeeDetailPage() {
       { id: employeeId, data: { status: 'active' } },
       {
         onSuccess: () => toast.success('Employee activated'),
-        onError: () => toast.error('Failed to activate employee'),
+        onError: (err) => toast.error(apiErrorMessage(err, 'Failed to activate employee')),
       },
     );
   }
@@ -1093,7 +1114,7 @@ export default function EmployeeDetailPage() {
       { id: employeeId, data: { status: 'inactive' } },
       {
         onSuccess: () => toast.success('Employee terminated'),
-        onError: () => toast.error('Failed to terminate employee'),
+        onError: (err) => toast.error(apiErrorMessage(err, 'Failed to terminate employee')),
       },
     );
   }
@@ -1104,7 +1125,7 @@ export default function EmployeeDetailPage() {
         toast.success('Employee deleted');
         router.push('/hr/employees');
       },
-      onError: () => toast.error('Failed to delete employee'),
+      onError: (err) => toast.error(apiErrorMessage(err, 'Failed to delete employee')),
     });
   }
 

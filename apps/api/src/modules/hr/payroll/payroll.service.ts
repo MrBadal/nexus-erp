@@ -417,23 +417,28 @@ export class PayrollService {
       isActive: data.isActive ?? true,
     };
 
-    const [structure] = await this.db
-      .insert(salaryStructures)
-      .values(values)
-      .returning();
+    // Atomic: structure + components commit together
+    const structure = await this.db.transaction(async (tx) => {
+      const [created] = await tx
+        .insert(salaryStructures)
+        .values(values)
+        .returning();
 
-    if (data.components && data.components.length > 0) {
-      const componentValues = data.components.map((c) => ({
-        structureId: structure.id,
-        componentId: c.componentId,
-        formula: c.formula || null,
-        amount: c.amount || null,
-        percentage: c.percentage || null,
-        basedOn: c.basedOn || null,
-      }));
+      if (data.components && data.components.length > 0) {
+        const componentValues = data.components.map((c) => ({
+          structureId: created.id,
+          componentId: c.componentId,
+          formula: c.formula || null,
+          amount: c.amount || null,
+          percentage: c.percentage || null,
+          basedOn: c.basedOn || null,
+        }));
 
-      await this.db.insert(salaryStructureComponents).values(componentValues);
-    }
+        await tx.insert(salaryStructureComponents).values(componentValues);
+      }
+
+      return created;
+    });
 
     return this.findSalaryStructureById(tenantId, structure.id);
   }
@@ -762,22 +767,27 @@ export class PayrollService {
         status: 'draft',
       };
 
-      const [entry] = await this.db
-        .insert(payrollEntries)
-        .values(payrollValues)
-        .returning();
+      // Atomic: payroll entry + its components commit together
+      const entry = await this.db.transaction(async (tx) => {
+        const [created] = await tx
+          .insert(payrollEntries)
+          .values(payrollValues)
+          .returning();
 
-      // Insert payroll entry components
-      if (entryComponentValues.length > 0) {
-        const componentRows = entryComponentValues.map((c) => ({
-          payrollEntryId: entry.id,
-          componentId: c.componentId,
-          amount: c.amount,
-          type: c.type,
-        }));
+        // Insert payroll entry components
+        if (entryComponentValues.length > 0) {
+          const componentRows = entryComponentValues.map((c) => ({
+            payrollEntryId: created.id,
+            componentId: c.componentId,
+            amount: c.amount,
+            type: c.type,
+          }));
 
-        await this.db.insert(payrollEntryComponents).values(componentRows);
-      }
+          await tx.insert(payrollEntryComponents).values(componentRows);
+        }
+
+        return created;
+      });
 
       createdEntries.push(entry.id);
     }

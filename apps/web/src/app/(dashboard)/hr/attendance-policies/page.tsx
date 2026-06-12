@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { StatusDot } from '@/components/ui/status-dot';
 import { Skeleton } from '@/components/ui/skeleton';
+import { apiErrorMessage } from '@/lib/api';
 import {
   useAttendancePolicies,
   useActiveAttendancePolicy,
@@ -78,7 +79,7 @@ export default function AttendancePoliciesPage() {
         { id: editingId, data: payload },
         {
           onSuccess: () => toast.success('Policy updated'),
-          onError: () => toast.error('Failed to update policy'),
+          onError: (err) => toast.error(apiErrorMessage(err, 'Failed to update policy')),
         },
       );
     } else {
@@ -87,7 +88,7 @@ export default function AttendancePoliciesPage() {
           toast.success('Policy created');
           resetForm();
         },
-        onError: () => toast.error('Failed to create policy'),
+        onError: (err) => toast.error(apiErrorMessage(err, 'Failed to create policy')),
       });
     }
   };
@@ -110,7 +111,7 @@ export default function AttendancePoliciesPage() {
         toast.success('Policy deleted');
         if (editingId === p.id) resetForm();
       },
-      onError: () => toast.error('Failed to delete policy'),
+      onError: (err) => toast.error(apiErrorMessage(err, 'Failed to delete policy')),
     });
   };
 

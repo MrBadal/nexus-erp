@@ -1,11 +1,14 @@
 import {
   Controller,
+  Get,
   Post,
   Body,
+  Param,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service.js';
 import { LoginDto, RefreshTokenDto, ForgotPasswordDto, ResetPasswordDto, VerifyMfaDto } from './dto/login.dto.js';
 import { RegisterDto } from './dto/register.dto.js';
@@ -17,6 +20,7 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Public()
+  @Throttle({ default: { limit: 5, ttl: 60_000 } }) // 5 attempts/min per IP — brute-force protection
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Authenticate user and receive JWT tokens' })
@@ -27,6 +31,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 5, ttl: 60_000 } }) // 5 registrations/min per IP
   @Post('register')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Register a new tenant and admin user' })
@@ -47,6 +52,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 3, ttl: 60_000 } }) // 3 reset emails/min per IP — abuse protection
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Request a password reset email' })
@@ -56,6 +62,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 5, ttl: 60_000 } }) // 5 attempts/min per IP — token guessing protection
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Reset password using token from email' })
@@ -73,5 +80,14 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Invalid MFA code' })
   async verifyMfa(@Body() verifyMfaDto: VerifyMfaDto) {
     return this.authService.verifyMfa(verifyMfaDto);
+  }
+
+  @Public()
+  @Get('branding/:slug')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Public branding for the branded login page (no auth)' })
+  @ApiResponse({ status: 200, description: 'Branding (generic defaults when slug is unknown)' })
+  async getBranding(@Param('slug') slug: string) {
+    return this.authService.getPublicBranding(slug);
   }
 }

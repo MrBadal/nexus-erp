@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import api, { get, post, put, del, buildQueryString } from '@/lib/api';
+import { get, post, put, del, buildQueryString } from '@/lib/api';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -164,16 +164,33 @@ export function useDeleteEmployeeDocument() {
   });
 }
 
+/** True when fileUrl is a GCS object path (`<tenantId>/<uuid>-<name>`) rather than a URL. */
+export function isStoragePath(fileUrl: string): boolean {
+  return !/^https?:\/\//i.test(fileUrl);
+}
+
 /**
- * Trigger an HR-side download of a document by opening the stored fileUrl in
- * a new tab. The backend stores either a pre-signed URL or external link;
- * once the MinIO storage service is wired, this can be swapped to an
- * authenticated streaming endpoint.
+ * Resolve a stored fileUrl to something a browser can open. External links
+ * pass through unchanged; GCS object paths are exchanged for a short-lived
+ * signed URL via GET /files/signed (requires hr:read).
  */
-export function downloadEmployeeDocument(doc: { fileUrl: string; name: string }) {
+export async function resolveDocumentUrl(fileUrl: string): Promise<string> {
+  if (!isStoragePath(fileUrl)) return fileUrl;
+  const res = await get<{ url: string }>(
+    `/files/signed?path=${encodeURIComponent(fileUrl)}`,
+  );
+  return res.url;
+}
+
+/**
+ * Trigger an HR-side download/open of a document. GCS-stored documents are
+ * resolved to a signed URL first; external links open directly.
+ */
+export async function downloadEmployeeDocument(doc: { fileUrl: string; name: string }) {
   if (typeof window === 'undefined') return;
+  const href = await resolveDocumentUrl(doc.fileUrl);
   const a = document.createElement('a');
-  a.href = doc.fileUrl;
+  a.href = href;
   a.download = doc.name;
   a.target = '_blank';
   a.rel = 'noopener noreferrer';
@@ -213,25 +230,20 @@ export function useUploadMyDocument() {
 }
 
 /**
- * Initiates a download from the ESS-side endpoint. The endpoint either
- * redirects to a pre-signed URL or (TODO) streams the file body. We rely on
- * the browser following the redirect via a regular anchor click.
+ * Initiates a download from the ESS-side endpoint. The endpoint returns
+ * `{ url }` — a signed GCS URL (with attachment disposition) for stored
+ * documents, or the original external link. We navigate the browser to it
+ * directly, which avoids CORS issues that a cross-origin blob fetch would hit.
  */
 export async function downloadMyDocument(id: string, filename: string) {
   if (typeof window === 'undefined') return;
-  // Use the underlying axios client so the auth token is attached on the
-  // initial request, but ask for a blob so we can save it locally even if the
-  // server streams the body directly.
-  const response = await api.get(`/ess/documents/${id}/download`, {
-    responseType: 'blob',
-  });
-  const blob = response.data as Blob;
-  const url = URL.createObjectURL(blob);
+  const res = await get<{ url: string }>(`/ess/documents/${id}/download`);
   const a = document.createElement('a');
-  a.href = url;
+  a.href = res.url;
   a.download = filename;
+  a.target = '_blank';
+  a.rel = 'noopener noreferrer';
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  URL.revokeObjectURL(url);
 }

@@ -73,10 +73,12 @@ import {
   BadgeIndianRupee,
   Mail,
   LogOut,
+  Palette,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useAuthStore } from "@/stores/auth.store";
+import { useBrand } from "@/components/layout/brand-provider";
 import {
   Tooltip,
   TooltipContent,
@@ -385,6 +387,7 @@ const navigation: NavItem[] = [
       { title: "TDS Sections", href: "/settings/tds-sections", icon: FileText },
       { title: "Number Series", href: "/settings/number-series", icon: FileText },
       { title: "Email (SMTP)", href: "/settings/smtp", icon: Mail },
+      { title: "Branding", href: "/settings/branding", icon: Palette },
       { title: "Currencies", href: "/settings/currencies", icon: DollarSign },
       { title: "Fiscal Periods", href: "/settings/fiscal-periods", icon: Calendar },
       { title: "Approval Workflows", href: "/settings/approval-workflows", icon: ClipboardCheck },
@@ -398,6 +401,8 @@ const navigation: NavItem[] = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const brand = useBrand();
+  const appName = brand?.appName || "NexusERP";
   const [collapsed, setCollapsed] = React.useState(false);
   const [expandedGroups, setExpandedGroups] = React.useState<string[]>([
     "Finance",
@@ -526,21 +531,42 @@ export function Sidebar() {
           collapsed ? "w-16" : "w-64"
         )}
       >
-        {/* Logo / Brand */}
-        <div className="flex h-12 items-center border-b bg-[#1B4F72] px-4">
+        {/* Logo / Brand (tenant white-label via BrandProvider) */}
+        <div
+          className="flex h-12 items-center border-b px-4"
+          style={{ backgroundColor: "var(--brand, #1B4F72)" }}
+        >
           {!collapsed && (
             <Link href="/dashboard" className="flex items-center gap-2">
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/20 text-white font-bold text-sm">
-                N
-              </div>
-              <span className="text-base font-bold text-white">NexusERP</span>
+              {brand?.logoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={brand.logoUrl}
+                  alt={appName}
+                  className="h-7 w-7 rounded-lg bg-white/90 object-contain p-0.5"
+                />
+              ) : (
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/20 text-white font-bold text-sm">
+                  {appName.charAt(0).toUpperCase()}
+                </div>
+              )}
+              <span className="text-base font-bold text-white">{appName}</span>
             </Link>
           )}
           {collapsed && (
             <Link href="/dashboard" className="mx-auto">
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/20 text-white font-bold text-sm">
-                N
-              </div>
+              {brand?.logoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={brand.logoUrl}
+                  alt={appName}
+                  className="h-7 w-7 rounded-lg bg-white/90 object-contain p-0.5"
+                />
+              ) : (
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/20 text-white font-bold text-sm">
+                  {appName.charAt(0).toUpperCase()}
+                </div>
+              )}
             </Link>
           )}
         </div>

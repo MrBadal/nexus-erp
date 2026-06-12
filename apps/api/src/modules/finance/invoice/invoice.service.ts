@@ -161,59 +161,64 @@ export class InvoiceService {
 
     const total = subtotal - invoiceDiscountAmount + taxAmount;
 
-    const [invoice] = await this.db
-      .insert(invoices)
-      .values({
+    // Atomic: invoice header + lines must commit together
+    const invoice = await this.db.transaction(async (tx) => {
+      const [inv] = await tx
+        .insert(invoices)
+        .values({
+          tenantId,
+          invoiceNumber,
+          type: (data.type as any) || 'standard',
+          status: 'draft',
+          customerId: data.customerId || null,
+          billingAddress: data.billingAddress || null,
+          shippingAddress: data.shippingAddress || null,
+          issueDate: data.issueDate,
+          dueDate: data.dueDate,
+          paymentTerms: (data.paymentTerms as any) || 'net_30',
+          currencyCode: data.currencyCode || 'USD',
+          exchangeRate: data.exchangeRate || '1',
+          subtotal: subtotal.toFixed(4),
+          discountType: data.discountType ? (data.discountType as any) : null,
+          discountValue: data.discountValue || null,
+          discountAmount: invoiceDiscountAmount.toFixed(4),
+          taxAmount: taxAmount.toFixed(4),
+          total: total.toFixed(4),
+          amountPaid: '0',
+          balanceDue: total.toFixed(4),
+          notes: data.notes || null,
+          customerNotes: data.customerNotes || null,
+          termsAndConditions: data.termsAndConditions || null,
+          footer: data.footer || null,
+          creditNoteForId: data.creditNoteForId || null,
+          createdBy: userId,
+        })
+        .returning();
+
+      // Insert lines
+      const lineValues = calculatedLines.map((line) => ({
         tenantId,
-        invoiceNumber,
-        type: (data.type as any) || 'standard',
-        status: 'draft',
-        customerId: data.customerId || null,
-        billingAddress: data.billingAddress || null,
-        shippingAddress: data.shippingAddress || null,
-        issueDate: data.issueDate,
-        dueDate: data.dueDate,
-        paymentTerms: (data.paymentTerms as any) || 'net_30',
-        currencyCode: data.currencyCode || 'USD',
-        exchangeRate: data.exchangeRate || '1',
-        subtotal: subtotal.toFixed(4),
-        discountType: data.discountType ? (data.discountType as any) : null,
-        discountValue: data.discountValue || null,
-        discountAmount: invoiceDiscountAmount.toFixed(4),
-        taxAmount: taxAmount.toFixed(4),
-        total: total.toFixed(4),
-        amountPaid: '0',
-        balanceDue: total.toFixed(4),
-        notes: data.notes || null,
-        customerNotes: data.customerNotes || null,
-        termsAndConditions: data.termsAndConditions || null,
-        footer: data.footer || null,
-        creditNoteForId: data.creditNoteForId || null,
-        createdBy: userId,
-      })
-      .returning();
+        invoiceId: inv.id,
+        lineNumber: line.lineNumber,
+        productId: line.productId || null,
+        description: line.description || null,
+        quantity: line.quantity || '1',
+        unitPrice: line.unitPrice || '0',
+        unitOfMeasure: line.unitOfMeasure || null,
+        discountType: line.discountType ? (line.discountType as any) : null,
+        discountValue: line.discountValue || null,
+        discountAmount: line.discountAmount,
+        amount: line.amount,
+        taxRateId: line.taxRateId || null,
+        taxAmount: line.taxAmount,
+        accountId: line.accountId || null,
+        sortOrder: line.sortOrder,
+      }));
 
-    // Insert lines
-    const lineValues = calculatedLines.map((line) => ({
-      tenantId,
-      invoiceId: invoice.id,
-      lineNumber: line.lineNumber,
-      productId: line.productId || null,
-      description: line.description || null,
-      quantity: line.quantity || '1',
-      unitPrice: line.unitPrice || '0',
-      unitOfMeasure: line.unitOfMeasure || null,
-      discountType: line.discountType ? (line.discountType as any) : null,
-      discountValue: line.discountValue || null,
-      discountAmount: line.discountAmount,
-      amount: line.amount,
-      taxRateId: line.taxRateId || null,
-      taxAmount: line.taxAmount,
-      accountId: line.accountId || null,
-      sortOrder: line.sortOrder,
-    }));
+      await tx.insert(invoiceLines).values(lineValues);
 
-    await this.db.insert(invoiceLines).values(lineValues);
+      return inv;
+    });
 
     return this.findById(tenantId, invoice.id);
   }
@@ -240,8 +245,6 @@ export class InvoiceService {
 
     if (data.lines) {
       // Recalculate with new lines
-      await this.db.delete(invoiceLines).where(eq(invoiceLines.invoiceId, id));
-
       const calculatedLines = data.lines.map((line, index) => {
         const quantity = parseFloat(line.quantity || '1');
         const unitPrice = parseFloat(line.unitPrice || '0');
@@ -278,8 +281,6 @@ export class InvoiceService {
         };
       });
 
-      await this.db.insert(invoiceLines).values(calculatedLines);
-
       const subtotal = calculatedLines.reduce(
         (sum, l) => sum + parseFloat(l.amount),
         0,
@@ -300,12 +301,19 @@ export class InvoiceService {
       updateData.discountAmount = invoiceDiscount.toFixed(4);
       updateData.total = total.toFixed(4);
       updateData.balanceDue = (total - paid).toFixed(4);
-    }
 
-    await this.db
-      .update(invoices)
-      .set(updateData)
-      .where(eq(invoices.id, id));
+      // Atomic: delete + reinsert lines + header update commit together
+      await this.db.transaction(async (tx) => {
+        await tx.delete(invoiceLines).where(eq(invoiceLines.invoiceId, id));
+        await tx.insert(invoiceLines).values(calculatedLines);
+        await tx.update(invoices).set(updateData).where(eq(invoices.id, id));
+      });
+    } else {
+      await this.db
+        .update(invoices)
+        .set(updateData)
+        .where(eq(invoices.id, id));
+    }
 
     return this.findById(tenantId, id);
   }

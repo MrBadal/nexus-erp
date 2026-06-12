@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { get, endpoints, buildQueryString } from '@/lib/api';
+import api, { get, endpoints, buildQueryString } from '@/lib/api';
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -43,6 +43,7 @@ export interface TrialBalanceResult {
 export interface ProfitLossAccount {
   accountCode: string;
   accountName: string;
+  financialStatement: string | null;
   amount: string;
 }
 
@@ -59,6 +60,7 @@ export interface ProfitLossResult {
 export interface BalanceSheetAccount {
   accountCode: string;
   accountName: string;
+  financialStatement: string | null;
   balance: string;
 }
 
@@ -322,6 +324,30 @@ export function useTdsPayment(fiscalYear: string, quarter?: number, enabled = tr
       ),
     enabled: enabled && !!fiscalYear,
   });
+}
+
+// ─── PDF download ─────────────────────────────────────────────
+
+/**
+ * Download a report PDF through the authenticated axios instance
+ * (the Authorization header is attached by the api interceptor) and
+ * trigger a browser download via an object URL.
+ */
+export async function downloadReportPdf(
+  report: 'trial-balance' | 'profit-loss' | 'balance-sheet',
+  params: Record<string, string | undefined>,
+  filename: string,
+): Promise<void> {
+  const response = await api.get(
+    `/finance/reports/${report}/pdf${buildQueryString(params)}`,
+    { responseType: 'blob' },
+  );
+  const url = URL.createObjectURL(response.data as Blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 export function useTdsReturn(fiscalYear: string, quarter: number, enabled = true) {

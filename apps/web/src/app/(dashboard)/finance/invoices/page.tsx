@@ -1,125 +1,49 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { type ColumnDef } from '@tanstack/react-table';
-import { AlertTriangle, FileText, CheckCircle, Clock } from 'lucide-react';
+import { AlertTriangle, AlertCircle, FileText, CheckCircle, Clock } from 'lucide-react';
 import { ListPage } from '@/components/layout/list-page';
 import { DataTable, SortableHeader } from '@/components/ui/data-table';
 import { StatusDot } from '@/components/ui/status-dot';
 import { type FilterConfig } from '@/components/ui/filter-sidebar';
+import { useInvoices, type Invoice } from '@/hooks/use-invoices';
+import { useCustomers } from '@/hooks/use-selling';
+import { apiErrorMessage } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
 
 // ---------------------------------------------------------------------------
-// Types (aligned with use-invoices hook Invoice type, but demo data here)
+// Row model (Invoice + resolved customer name)
 // ---------------------------------------------------------------------------
 
-interface InvoiceRow {
-  id: string;
-  invoiceNumber: string;
+interface InvoiceRow extends Invoice {
   customerName: string | null;
-  issueDate: string;
-  dueDate: string;
-  total: number;
-  balanceDue: number;
-  status: 'draft' | 'sent' | 'partially_paid' | 'paid' | 'overdue' | 'void';
-  currencyCode: string;
 }
 
 // ---------------------------------------------------------------------------
 // Status mapping
 // ---------------------------------------------------------------------------
 
-const statusVariantMap: Record<InvoiceRow['status'], 'default' | 'info' | 'warning' | 'success' | 'danger' | 'muted'> = {
+const statusVariantMap: Record<Invoice['status'], 'default' | 'info' | 'warning' | 'success' | 'danger' | 'muted'> = {
   draft: 'default',
   sent: 'info',
   partially_paid: 'warning',
   paid: 'success',
   overdue: 'danger',
+  cancelled: 'muted',
   void: 'muted',
 };
 
-const statusLabelMap: Record<InvoiceRow['status'], string> = {
+const statusLabelMap: Record<Invoice['status'], string> = {
   draft: 'Draft',
   sent: 'Sent',
   partially_paid: 'Partially Paid',
   paid: 'Paid',
   overdue: 'Overdue',
+  cancelled: 'Cancelled',
   void: 'Void',
 };
-
-// ---------------------------------------------------------------------------
-// Demo data
-// ---------------------------------------------------------------------------
-
-const demoInvoices: InvoiceRow[] = [
-  {
-    id: '1',
-    invoiceNumber: 'INV-2024-0138',
-    customerName: 'Acme Corporation',
-    issueDate: '2024-01-05',
-    dueDate: '2024-02-04',
-    total: 16350.0,
-    balanceDue: 0,
-    status: 'paid',
-    currencyCode: 'USD',
-  },
-  {
-    id: '2',
-    invoiceNumber: 'INV-2024-0139',
-    customerName: 'TechStart Inc.',
-    issueDate: '2024-01-10',
-    dueDate: '2024-02-09',
-    total: 9265.0,
-    balanceDue: 9265.0,
-    status: 'sent',
-    currencyCode: 'USD',
-  },
-  {
-    id: '3',
-    invoiceNumber: 'INV-2024-0140',
-    customerName: 'Global Solutions Ltd.',
-    issueDate: '2023-12-01',
-    dueDate: '2023-12-31',
-    total: 23980.0,
-    balanceDue: 23980.0,
-    status: 'overdue',
-    currencyCode: 'USD',
-  },
-  {
-    id: '4',
-    invoiceNumber: 'INV-2024-0141',
-    customerName: 'Bright Media Co.',
-    issueDate: '2024-01-12',
-    dueDate: '2024-02-11',
-    total: 13080.0,
-    balanceDue: 6540.0,
-    status: 'partially_paid',
-    currencyCode: 'USD',
-  },
-  {
-    id: '5',
-    invoiceNumber: 'INV-2024-0142',
-    customerName: null,
-    issueDate: '2024-01-19',
-    dueDate: '2024-02-18',
-    total: 4905.0,
-    balanceDue: 4905.0,
-    status: 'draft',
-    currencyCode: 'USD',
-  },
-  {
-    id: '6',
-    invoiceNumber: 'INV-2024-0143',
-    customerName: 'Summit Partners',
-    issueDate: '2024-01-20',
-    dueDate: '2024-02-19',
-    total: 7200.0,
-    balanceDue: 0,
-    status: 'void',
-    currencyCode: 'USD',
-  },
-];
 
 // ---------------------------------------------------------------------------
 // Column definitions
@@ -130,6 +54,7 @@ function isOverdue(row: InvoiceRow): boolean {
     row.status === 'overdue' ||
     (row.status !== 'paid' &&
       row.status !== 'void' &&
+      row.status !== 'cancelled' &&
       new Date(row.dueDate) < new Date())
   );
 }
@@ -187,7 +112,7 @@ const columns: ColumnDef<InvoiceRow, unknown>[] = [
     ),
     cell: ({ row }) => (
       <span className="font-mono text-sm">
-        {formatCurrency(row.original.total, row.original.currencyCode)}
+        {formatCurrency(parseFloat(row.original.total), row.original.currencyCode)}
       </span>
     ),
   },
@@ -196,7 +121,7 @@ const columns: ColumnDef<InvoiceRow, unknown>[] = [
     header: 'Outstanding',
     cell: ({ row }) => {
       const overdue = isOverdue(row.original);
-      const due = row.original.balanceDue;
+      const due = parseFloat(row.original.balanceDue);
       return (
         <span
           className={
@@ -258,37 +183,75 @@ export default function InvoicesPage() {
   const router = useRouter();
   const [filterValues, setFilterValues] = useState<Record<string, unknown>>({});
 
-  // Compute filtered data
+  const { data: invoices, isLoading, isError, error } = useInvoices();
+  const { data: customers } = useCustomers();
+
+  const customerNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of customers ?? []) {
+      map.set(c.id, c.name);
+    }
+    return map;
+  }, [customers]);
+
+  const rows: InvoiceRow[] = useMemo(
+    () =>
+      (invoices ?? []).map((inv) => ({
+        ...inv,
+        customerName: inv.customerId
+          ? customerNameById.get(inv.customerId) ?? null
+          : null,
+      })),
+    [invoices, customerNameById],
+  );
+
+  // Apply sidebar filters client-side
   const filteredData = useMemo(() => {
-    let data = demoInvoices;
+    let data = rows;
     const statusFilter = filterValues.status as string[] | undefined;
     if (statusFilter && statusFilter.length > 0) {
       data = data.filter((inv) => statusFilter.includes(inv.status));
     }
+    const dateRange = filterValues.dateRange as
+      | { from?: string; to?: string }
+      | undefined;
+    if (dateRange?.from) {
+      data = data.filter((inv) => inv.issueDate >= dateRange.from!);
+    }
+    if (dateRange?.to) {
+      data = data.filter((inv) => inv.issueDate <= dateRange.to!);
+    }
     return data;
-  }, [filterValues]);
+  }, [rows, filterValues]);
 
-  // Summary calculations
-  const totalOutstanding = useMemo(() => {
-    return demoInvoices
-      .filter((inv) => inv.status !== 'paid' && inv.status !== 'void')
-      .reduce((sum, inv) => sum + inv.balanceDue, 0);
-  }, []);
+  // Summary calculations (over the full data set, not the filtered view)
+  const totalOutstanding = useMemo(
+    () =>
+      rows
+        .filter((inv) => inv.status !== 'paid' && inv.status !== 'void' && inv.status !== 'cancelled')
+        .reduce((sum, inv) => sum + parseFloat(inv.balanceDue), 0),
+    [rows],
+  );
 
-  const overdueInvoices = useMemo(() => {
-    return demoInvoices.filter((inv) => inv.status === 'overdue');
-  }, []);
+  const overdueRows = useMemo(() => rows.filter(isOverdue), [rows]);
 
-  const overdueAmount = useMemo(() => {
-    return overdueInvoices.reduce((sum, inv) => sum + inv.balanceDue, 0);
-  }, [overdueInvoices]);
+  const overdueAmount = useMemo(
+    () => overdueRows.reduce((sum, inv) => sum + parseFloat(inv.balanceDue), 0),
+    [overdueRows],
+  );
 
-  const paidThisMonthCount = useMemo(() => {
-    return demoInvoices.filter((inv) => inv.status === 'paid').length;
-  }, []);
+  const paidCount = useMemo(
+    () => rows.filter((inv) => inv.status === 'paid').length,
+    [rows],
+  );
 
-  const draftCount = useMemo(() => {
-    return demoInvoices.filter((inv) => inv.status === 'draft').length;
+  const draftCount = useMemo(
+    () => rows.filter((inv) => inv.status === 'draft').length,
+    [rows],
+  );
+
+  const handleFilterChange = useCallback((key: string, value: unknown) => {
+    setFilterValues((prev) => ({ ...prev, [key]: value }));
   }, []);
 
   return (
@@ -308,12 +271,12 @@ export default function InvoicesPage() {
         },
         {
           label: 'Overdue',
-          value: `${overdueInvoices.length} (${formatCurrency(overdueAmount)})`,
+          value: `${overdueRows.length} (${formatCurrency(overdueAmount)})`,
           icon: <AlertTriangle className="h-4 w-4 text-destructive" />,
         },
         {
-          label: 'Paid This Month',
-          value: paidThisMonthCount,
+          label: 'Paid',
+          value: paidCount,
           icon: <CheckCircle className="h-4 w-4" />,
         },
         {
@@ -324,17 +287,26 @@ export default function InvoicesPage() {
       ]}
       filterConfig={filterConfig}
       filterValues={filterValues}
-      onFilterChange={(key, value) =>
-        setFilterValues((prev) => ({ ...prev, [key]: value }))
-      }
+      onFilterChange={handleFilterChange}
       onFilterClear={() => setFilterValues({})}
     >
+      {isError && (
+        <div className="mb-4 flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          <span>{apiErrorMessage(error, 'Failed to load invoices')}</span>
+        </div>
+      )}
       <DataTable
         columns={columns}
         data={filteredData}
+        isLoading={isLoading}
         onRowClick={(row) => router.push(`/finance/invoices/${row.id}`)}
         searchPlaceholder="Search invoices..."
         emptyMessage="No invoices found."
+        emptyAction={{
+          label: 'New Invoice',
+          onClick: () => router.push('/finance/invoices/new'),
+        }}
       />
     </ListPage>
   );

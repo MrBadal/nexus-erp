@@ -9,7 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Download, Play } from 'lucide-react';
+import { Download, FileText, Play } from 'lucide-react';
 
 interface ReportFiltersProps {
   showAccountFilter?: boolean;
@@ -26,6 +26,7 @@ interface ReportFiltersProps {
   onAsOfDateChange?: (value: string) => void;
   onGenerate?: () => void;
   onExportCsv?: () => void;
+  onExportPdf?: () => void;
   isLoading?: boolean;
 }
 
@@ -44,6 +45,7 @@ export function ReportFilters({
   onAsOfDateChange,
   onGenerate,
   onExportCsv,
+  onExportPdf,
   isLoading,
 }: ReportFiltersProps) {
   return (
@@ -116,6 +118,19 @@ export function ReportFilters({
         <Download className="mr-1.5 h-3.5 w-3.5" />
         Export CSV
       </Button>
+
+      {onExportPdf && (
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-8"
+          onClick={onExportPdf}
+          disabled={isLoading}
+        >
+          <FileText className="mr-1.5 h-3.5 w-3.5" />
+          Download PDF
+        </Button>
+      )}
     </div>
   );
 }

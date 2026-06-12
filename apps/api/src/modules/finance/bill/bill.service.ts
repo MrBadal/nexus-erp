@@ -211,39 +211,44 @@ export class BillService {
       threeWayMatchStatus = 'pending';
     }
 
-    const [bill] = await this.db
-      .insert(bills)
-      .values({
-        tenantId,
-        billNumber,
-        vendorId: data.vendorId,
-        vendorInvoiceNumber: data.vendorInvoiceNumber || null,
-        purchaseOrderId: data.purchaseOrderId || null,
-        issueDate: data.issueDate,
-        dueDate: effectiveDueDate,
-        paymentTerms: (data.paymentTerms as 'net_30' | 'net_60' | 'due_on_receipt') || 'net_30',
-        currencyCode: data.currencyCode || 'INR',
-        subtotal: subtotal.toFixed(4),
-        taxAmount: totalTax.toFixed(4),
-        total: total.toFixed(4),
-        amountPaid: '0',
-        balanceDue: total.toFixed(4),
-        status: 'draft',
-        threeWayMatchStatus,
-        notes: data.notes || null,
-        createdBy: userId,
-      })
-      .returning();
+    // Atomic: bill header + lines must commit together
+    const bill = await this.db.transaction(async (tx) => {
+      const [created] = await tx
+        .insert(bills)
+        .values({
+          tenantId,
+          billNumber,
+          vendorId: data.vendorId,
+          vendorInvoiceNumber: data.vendorInvoiceNumber || null,
+          purchaseOrderId: data.purchaseOrderId || null,
+          issueDate: data.issueDate,
+          dueDate: effectiveDueDate,
+          paymentTerms: (data.paymentTerms as 'net_30' | 'net_60' | 'due_on_receipt') || 'net_30',
+          currencyCode: data.currencyCode || 'INR',
+          subtotal: subtotal.toFixed(4),
+          taxAmount: totalTax.toFixed(4),
+          total: total.toFixed(4),
+          amountPaid: '0',
+          balanceDue: total.toFixed(4),
+          status: 'draft',
+          threeWayMatchStatus,
+          notes: data.notes || null,
+          createdBy: userId,
+        })
+        .returning();
 
-    // Insert bill lines
-    if (lineData.length > 0) {
-      await this.db.insert(billLines).values(
-        lineData.map((line) => ({
-          billId: bill.id,
-          ...line,
-        })),
-      );
-    }
+      // Insert bill lines
+      if (lineData.length > 0) {
+        await tx.insert(billLines).values(
+          lineData.map((line) => ({
+            billId: created.id,
+            ...line,
+          })),
+        );
+      }
+
+      return created;
+    });
 
     await this.auditService.logAction({
       tenantId,
@@ -521,49 +526,9 @@ export class BillService {
 
     const entryNumber = await this.numberSeriesService.getNext(tenantId, 'journal_entry');
 
-    const [entry] = await this.db
-      .insert(journalEntries)
-      .values({
-        tenantId,
-        entryNumber,
-        date: bill.issueDate,
-        postedDate: bill.issueDate,
-        reference: `Bill ${bill.billNumber}`,
-        description: `Bill approved - ${bill.billNumber}`,
-        sourceType: 'bill',
-        status: 'posted',
-        totalDebit: amount.toFixed(4),
-        totalCredit: amount.toFixed(4),
-        createdBy: userId,
-      })
-      .returning();
-
-    // Debit: Expense/Inventory for each line (or consolidated)
-    const debitAccountId = bill.lines[0]?.accountId || expenseAccount?.id || entry.tenantId;
-
-    const journalLineValues: {
-      tenantId: string;
-      journalEntryId: string;
-      lineNumber: number;
-      accountId: string;
-      description: string;
-      debitAmount: string;
-      creditAmount: string;
-    }[] = [];
-
-    // Line 1: DR Expense (gross amount)
-    journalLineValues.push({
-      tenantId,
-      journalEntryId: entry.id,
-      lineNumber: 1,
-      accountId: debitAccountId,
-      description: `Bill ${bill.billNumber} - Expense`,
-      debitAmount: amount.toFixed(4),
-      creditAmount: '0',
-    });
-
+    // Pre-tx reads: TDS Payable account (only needed when TDS deducted)
+    let tdsPayableAccountId: string | null = null;
     if (tdsAmount > 0) {
-      // TDS split: CR TDS Payable + CR AP (net)
       const [tdsPayableAccount] = await this.db
         .select()
         .from(accounts)
@@ -573,56 +538,17 @@ export class BillService {
               OR LOWER(${accounts.name}) LIKE '%tds%payable%'`,
         ))
         .limit(1);
-
-      const apCreditAmount = amount - tdsAmount;
-
-      // Line 2: CR Accounts Payable (net of TDS)
-      journalLineValues.push({
-        tenantId,
-        journalEntryId: entry.id,
-        lineNumber: 2,
-        accountId: apAccount?.id || entry.tenantId,
-        description: `Bill ${bill.billNumber} - Accounts Payable (net of TDS)`,
-        debitAmount: '0',
-        creditAmount: apCreditAmount.toFixed(4),
-      });
-
-      // Line 3: CR TDS Payable
-      journalLineValues.push({
-        tenantId,
-        journalEntryId: entry.id,
-        lineNumber: 3,
-        accountId: tdsPayableAccount?.id || apAccount?.id || entry.tenantId,
-        description: `Bill ${bill.billNumber} - TDS Payable`,
-        debitAmount: '0',
-        creditAmount: tdsAmount.toFixed(4),
-      });
-    } else {
-      // No TDS: CR AP for full amount
-      journalLineValues.push({
-        tenantId,
-        journalEntryId: entry.id,
-        lineNumber: 2,
-        accountId: apAccount?.id || entry.tenantId,
-        description: `Bill ${bill.billNumber} - Accounts Payable`,
-        debitAmount: '0',
-        creditAmount: amount.toFixed(4),
-      });
+      tdsPayableAccountId = tdsPayableAccount?.id || null;
     }
 
-    await this.db.insert(journalLines).values(journalLineValues);
-
     // B.4: ITC split for tax amounts
-    const eligibleTax = bill.lines
-      .filter(l => l.itcEligible !== false)
-      .reduce((sum, l) => sum + parseFloat(l.taxAmount || '0'), 0);
     const blockedTax = bill.lines
       .filter(l => l.itcEligible === false)
       .reduce((sum, l) => sum + parseFloat(l.taxAmount || '0'), 0);
 
-    // If there's blocked ITC, add additional journal lines
+    // Pre-tx read: GST Expense account for blocked ITC
+    let gstExpenseAccountId: string | null = null;
     if (blockedTax > 0) {
-      // Find GST Expense account for blocked ITC
       const [gstExpenseAccount] = await this.db
         .select()
         .from(accounts)
@@ -633,23 +559,109 @@ export class BillService {
               OR LOWER(${accounts.name}) LIKE '%blocked%itc%'`,
         ))
         .limit(1);
+      gstExpenseAccountId = gstExpenseAccount?.id || null;
+    }
 
-      if (gstExpenseAccount) {
+    // Atomic: journal entry + all journal lines commit together
+    return this.db.transaction(async (tx) => {
+      const [entry] = await tx
+        .insert(journalEntries)
+        .values({
+          tenantId,
+          entryNumber,
+          date: bill.issueDate,
+          postedDate: bill.issueDate,
+          reference: `Bill ${bill.billNumber}`,
+          description: `Bill approved - ${bill.billNumber}`,
+          sourceType: 'bill',
+          status: 'posted',
+          totalDebit: amount.toFixed(4),
+          totalCredit: amount.toFixed(4),
+          createdBy: userId,
+        })
+        .returning();
+
+      // Debit: Expense/Inventory for each line (or consolidated)
+      const debitAccountId = bill.lines[0]?.accountId || expenseAccount?.id || entry.tenantId;
+
+      const journalLineValues: {
+        tenantId: string;
+        journalEntryId: string;
+        lineNumber: number;
+        accountId: string;
+        description: string;
+        debitAmount: string;
+        creditAmount: string;
+      }[] = [];
+
+      // Line 1: DR Expense (gross amount)
+      journalLineValues.push({
+        tenantId,
+        journalEntryId: entry.id,
+        lineNumber: 1,
+        accountId: debitAccountId,
+        description: `Bill ${bill.billNumber} - Expense`,
+        debitAmount: amount.toFixed(4),
+        creditAmount: '0',
+      });
+
+      if (tdsAmount > 0) {
+        // TDS split: CR TDS Payable + CR AP (net)
+        const apCreditAmount = amount - tdsAmount;
+
+        // Line 2: CR Accounts Payable (net of TDS)
+        journalLineValues.push({
+          tenantId,
+          journalEntryId: entry.id,
+          lineNumber: 2,
+          accountId: apAccount?.id || entry.tenantId,
+          description: `Bill ${bill.billNumber} - Accounts Payable (net of TDS)`,
+          debitAmount: '0',
+          creditAmount: apCreditAmount.toFixed(4),
+        });
+
+        // Line 3: CR TDS Payable
+        journalLineValues.push({
+          tenantId,
+          journalEntryId: entry.id,
+          lineNumber: 3,
+          accountId: tdsPayableAccountId || apAccount?.id || entry.tenantId,
+          description: `Bill ${bill.billNumber} - TDS Payable`,
+          debitAmount: '0',
+          creditAmount: tdsAmount.toFixed(4),
+        });
+      } else {
+        // No TDS: CR AP for full amount
+        journalLineValues.push({
+          tenantId,
+          journalEntryId: entry.id,
+          lineNumber: 2,
+          accountId: apAccount?.id || entry.tenantId,
+          description: `Bill ${bill.billNumber} - Accounts Payable`,
+          debitAmount: '0',
+          creditAmount: amount.toFixed(4),
+        });
+      }
+
+      await tx.insert(journalLines).values(journalLineValues);
+
+      // If there's blocked ITC, add additional journal line
+      if (blockedTax > 0 && gstExpenseAccountId) {
         const currentLineCount = journalLineValues.length;
         // DR Blocked ITC Expense
-        await this.db.insert(journalLines).values({
+        await tx.insert(journalLines).values({
           tenantId,
           journalEntryId: entry.id,
           lineNumber: currentLineCount + 1,
-          accountId: gstExpenseAccount.id,
+          accountId: gstExpenseAccountId,
           description: `Blocked ITC - Bill ${bill.billNumber}`,
           debitAmount: blockedTax.toFixed(4),
           creditAmount: '0',
         });
       }
-    }
 
-    return entry.id;
+      return entry.id;
+    });
   }
 
   /**
@@ -691,25 +703,27 @@ export class BillService {
 
     const entryNumber = await this.numberSeriesService.getNext(tenantId, 'journal_entry');
 
-    const [entry] = await this.db
-      .insert(journalEntries)
-      .values({
-        tenantId,
-        entryNumber,
-        date: bill.issueDate,
-        postedDate: bill.issueDate,
-        reference: `RCM - Bill ${bill.billNumber}`,
-        description: `Reverse Charge Mechanism entry for Bill ${bill.billNumber}`,
-        sourceType: 'bill',
-        sourceId: bill.id,
-        status: 'posted',
-        totalDebit: taxAmount.toFixed(4),
-        totalCredit: taxAmount.toFixed(4),
-        createdBy: userId,
-      })
-      .returning();
+    // Atomic: RCM journal entry + lines commit together
+    await this.db.transaction(async (tx) => {
+      const [entry] = await tx
+        .insert(journalEntries)
+        .values({
+          tenantId,
+          entryNumber,
+          date: bill.issueDate,
+          postedDate: bill.issueDate,
+          reference: `RCM - Bill ${bill.billNumber}`,
+          description: `Reverse Charge Mechanism entry for Bill ${bill.billNumber}`,
+          sourceType: 'bill',
+          sourceId: bill.id,
+          status: 'posted',
+          totalDebit: taxAmount.toFixed(4),
+          totalCredit: taxAmount.toFixed(4),
+          createdBy: userId,
+        })
+        .returning();
 
-    await this.db.insert(journalLines).values([
+      await tx.insert(journalLines).values([
       {
         tenantId,
         journalEntryId: entry.id,
@@ -728,7 +742,8 @@ export class BillService {
         debitAmount: '0',
         creditAmount: taxAmount.toFixed(4),
       },
-    ]);
+      ]);
+    });
   }
 
   /**

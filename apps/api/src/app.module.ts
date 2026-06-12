@@ -1,7 +1,9 @@
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 import { appConfig } from './config/app.config.js';
 import { databaseConfig } from './config/database.config.js';
@@ -18,6 +20,8 @@ import { SharedModule } from './modules/shared/shared.module.js';
 import { SettingsModule } from './modules/settings/settings.module.js';
 import { IntegrationModule } from './modules/integration/integration.module.js';
 import { DashboardModule } from './modules/dashboard/dashboard.module.js';
+import { FilesModule } from './modules/files/files.module.js';
+import { HealthModule } from './modules/health/health.module.js';
 
 // Finance
 import { FinanceModule } from './modules/finance/finance.module.js';
@@ -81,6 +85,9 @@ import { ExitClearanceModule } from './modules/hr/exit-clearance/exit-clearance.
     }),
     EventEmitterModule.forRoot(),
     ScheduleModule.forRoot(),
+    // Global rate limit: 300 req/min per IP; auth routes carry stricter
+    // per-route @Throttle limits (5/min login, 3/min forgot-password).
+    ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 300 }]),
     DatabaseModule,
 
     // Platform
@@ -93,6 +100,8 @@ import { ExitClearanceModule } from './modules/hr/exit-clearance/exit-clearance.
     SettingsModule,
     IntegrationModule,
     DashboardModule,
+    FilesModule,
+    HealthModule,
 
     // Finance
     FinanceModule,
@@ -137,6 +146,10 @@ import { ExitClearanceModule } from './modules/hr/exit-clearance/exit-clearance.
     AttendanceRegularizationModule,
     LoanModule,
     ExitClearanceModule,
+  ],
+  providers: [
+    // Enforces the global throttle + per-route @Throttle overrides.
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
 })
 export class AppModule implements NestModule {

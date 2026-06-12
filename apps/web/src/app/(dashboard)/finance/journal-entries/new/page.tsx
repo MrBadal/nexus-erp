@@ -12,6 +12,7 @@ import { DatePicker } from '@/components/ui/date-picker';
 import { InlineGrid, type InlineGridColumn, type InlineGridFooterItem } from '@/components/ui/inline-grid';
 import { useCreateJournalEntry, usePostJournalEntry } from '@/hooks/use-journal-entries';
 import { useAccounts } from '@/hooks/use-accounts';
+import { apiErrorMessage } from '@/lib/api';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -179,8 +180,8 @@ export default function NewJournalEntryPage() {
       } else {
         router.push('/finance/journal-entries');
       }
-    } catch {
-      toast.error('Failed to create journal entry');
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Failed to create journal entry'));
     }
   }, [validate, buildPayload, createMutation, router]);
 
@@ -200,8 +201,8 @@ export default function NewJournalEntryPage() {
         toast.success('Journal entry created');
         router.push('/finance/journal-entries');
       }
-    } catch {
-      toast.error('Failed to create and post journal entry');
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Failed to create and post journal entry'));
     }
   }, [validate, buildPayload, createMutation, postMutation, router]);
 

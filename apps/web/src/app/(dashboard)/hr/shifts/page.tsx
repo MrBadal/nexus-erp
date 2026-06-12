@@ -1,5 +1,7 @@
 'use client';
 
+import { apiErrorMessage } from '@/lib/api';
+
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -86,7 +88,7 @@ export default function ShiftsPage() {
           setOpen(false);
           resetForm();
         },
-        onError: () => toast.error('Failed to create shift'),
+        onError: (err) => toast.error(apiErrorMessage(err, 'Failed to create shift')),
       },
     );
   };

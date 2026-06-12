@@ -1,5 +1,7 @@
 'use client';
 
+import { apiErrorMessage } from '@/lib/api';
+
 import { useState, useCallback, useMemo } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
@@ -241,8 +243,8 @@ export default function JournalEntryDetailPage() {
         },
       });
       toast.success('Journal entry saved');
-    } catch {
-      toast.error('Failed to save journal entry');
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Failed to save journal entry'));
     }
   }, [entry, effectiveDate, effectiveReference, effectiveDescription, updateMutation]);
 
@@ -255,8 +257,8 @@ export default function JournalEntryDetailPage() {
     try {
       await postMutation.mutateAsync(entry.id);
       toast.success('Journal entry posted successfully');
-    } catch {
-      toast.error('Failed to post journal entry');
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Failed to post journal entry'));
     }
   }, [entry, difference, postMutation]);
 
@@ -268,8 +270,8 @@ export default function JournalEntryDetailPage() {
       if (result?.id) {
         router.push(`/finance/journal-entries/${result.id}`);
       }
-    } catch {
-      toast.error('Failed to reverse journal entry');
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Failed to reverse journal entry'));
     }
   }, [entry, reverseMutation, router]);
 
@@ -279,8 +281,8 @@ export default function JournalEntryDetailPage() {
       await deleteMutation.mutateAsync(entry.id);
       toast.success('Journal entry deleted');
       router.push('/finance/journal-entries');
-    } catch {
-      toast.error('Failed to delete journal entry');
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Failed to delete journal entry'));
     }
   }, [entry, deleteMutation, router]);
 

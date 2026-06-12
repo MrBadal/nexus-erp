@@ -1,5 +1,7 @@
 'use client';
 
+import { apiErrorMessage } from '@/lib/api';
+
 import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -52,14 +54,14 @@ export default function LeavePage() {
   const handleApprove = useCallback((id: string) => {
     approveMutation.mutate(id, {
       onSuccess: () => toast.success('Leave approved'),
-      onError: () => toast.error('Failed to approve'),
+      onError: (err) => toast.error(apiErrorMessage(err, 'Failed to approve')),
     });
   }, [approveMutation]);
 
   const handleReject = useCallback((id: string) => {
     rejectMutation.mutate(id, {
       onSuccess: () => toast.success('Leave rejected'),
-      onError: () => toast.error('Failed to reject'),
+      onError: (err) => toast.error(apiErrorMessage(err, 'Failed to reject')),
     });
   }, [rejectMutation]);
 

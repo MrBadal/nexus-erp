@@ -36,7 +36,10 @@ services:
     image: redis:7-alpine
     container_name: nexus-redis
     restart: unless-stopped
-    command: redis-server --maxmemory 64mb --maxmemory-policy allkeys-lru --save ""
+    # AOF persistence (everysec) so queued jobs survive restarts; tiny disk cost.
+    command: redis-server --maxmemory 64mb --maxmemory-policy allkeys-lru --appendonly yes --appendfsync everysec
+    volumes:
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -74,6 +77,9 @@ services:
       # Used by UserService.buildActivationUrl() to build set-password links
       # an admin shares with newly-created or password-resetting users.
       PUBLIC_URL: ${PUBLIC_URL}
+      # GCS file storage (VM service account provides credentials via ADC)
+      GCS_PUBLIC_BUCKET: nexus-erp-public-responsive-sun-462613-d0
+      GCS_PRIVATE_BUCKET: nexus-erp-files-responsive-sun-462613-d0
     deploy:
       resources:
         limits:
@@ -89,6 +95,12 @@ services:
       NODE_ENV: production
       PORT: 3000
       NEXT_PUBLIC_API_URL: ${PUBLIC_URL}/api/v1
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:3000/login || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
     deploy:
       resources:
         limits:

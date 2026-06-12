@@ -1,5 +1,7 @@
 'use client';
 
+import { apiErrorMessage } from '@/lib/api';
+
 import { useState, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
@@ -317,7 +319,7 @@ export default function InvoiceDetailPage() {
       },
       {
         onSuccess: () => toast.success('Invoice saved'),
-        onError: () => toast.error('Failed to save invoice'),
+        onError: (err) => toast.error(apiErrorMessage(err, 'Failed to save invoice')),
       },
     );
   }
@@ -325,14 +327,14 @@ export default function InvoiceDetailPage() {
   function handleConfirm() {
     confirmMutation.mutate(invoiceId, {
       onSuccess: () => toast.success('Invoice confirmed'),
-      onError: () => toast.error('Failed to confirm invoice'),
+      onError: (err) => toast.error(apiErrorMessage(err, 'Failed to confirm invoice')),
     });
   }
 
   function handleSend() {
     sendMutation.mutate(invoiceId, {
       onSuccess: () => toast.success('Invoice sent'),
-      onError: () => toast.error('Failed to send invoice'),
+      onError: (err) => toast.error(apiErrorMessage(err, 'Failed to send invoice')),
     });
   }
 
@@ -342,7 +344,7 @@ export default function InvoiceDetailPage() {
         toast.success('Invoice voided');
         router.push('/finance/invoices');
       },
-      onError: () => toast.error('Failed to void invoice'),
+      onError: (err) => toast.error(apiErrorMessage(err, 'Failed to void invoice')),
     });
   }
 
@@ -352,7 +354,7 @@ export default function InvoiceDetailPage() {
         toast.success('Invoice deleted');
         router.push('/finance/invoices');
       },
-      onError: () => toast.error('Failed to delete invoice'),
+      onError: (err) => toast.error(apiErrorMessage(err, 'Failed to delete invoice')),
     });
   }
 

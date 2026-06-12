@@ -13,7 +13,7 @@ import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
 import { eq, and } from 'drizzle-orm';
 import { DATABASE, DrizzleDB } from '../../database/database.module.js';
-import { users, tenants, roles } from '../../database/schema/index.js';
+import { users, tenants, roles, businessSettings } from '../../database/schema/index.js';
 import { JwtPayload } from '../../common/decorators/current-user.decorator.js';
 import { LoginDto, RefreshTokenDto, ForgotPasswordDto, ResetPasswordDto, VerifyMfaDto } from './dto/login.dto.js';
 import { RegisterDto } from './dto/register.dto.js';
@@ -605,6 +605,50 @@ export class AuthService {
       }
     }
     return Buffer.from(bytes);
+  }
+
+  /**
+   * PUBLIC (pre-auth) branding lookup for the branded login page
+   * /login/<slug>. Returns ONLY display fields — never IDs or tenant data.
+   * Unknown/suspended slugs return the same generic defaults with HTTP 200
+   * so the endpoint cannot be used to enumerate tenant slugs.
+   */
+  async getPublicBranding(slug: string) {
+    const defaults = {
+      appName: 'NexusERP',
+      logoUrl: null as string | null,
+      brandColor: '#1B4F72',
+      loginWelcomeText: null as string | null,
+      loginBgUrl: null as string | null,
+    };
+
+    const [row] = await this.db
+      .select({
+        appName: businessSettings.appName,
+        logoUrl: businessSettings.logoUrl,
+        brandColor: businessSettings.brandColor,
+        loginWelcomeText: businessSettings.loginWelcomeText,
+        loginBgUrl: businessSettings.loginBgUrl,
+        companyName: businessSettings.companyName,
+        tenantName: tenants.name,
+        tenantStatus: tenants.status,
+      })
+      .from(tenants)
+      .leftJoin(businessSettings, eq(businessSettings.tenantId, tenants.id))
+      .where(eq(tenants.slug, slug))
+      .limit(1);
+
+    if (!row || row.tenantStatus === 'suspended' || row.tenantStatus === 'cancelled') {
+      return defaults;
+    }
+
+    return {
+      appName: row.appName || row.companyName || row.tenantName || defaults.appName,
+      logoUrl: row.logoUrl ?? defaults.logoUrl,
+      brandColor: row.brandColor || defaults.brandColor,
+      loginWelcomeText: row.loginWelcomeText ?? defaults.loginWelcomeText,
+      loginBgUrl: row.loginBgUrl ?? defaults.loginBgUrl,
+    };
   }
 
   private async generateTokens(payload: JwtPayload) {

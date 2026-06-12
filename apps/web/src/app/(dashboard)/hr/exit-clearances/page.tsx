@@ -35,6 +35,7 @@ import {
 } from '@/hooks/use-exit-clearance';
 import { useEmployees } from '@/hooks/use-hr';
 import { formatDate } from '@/lib/utils';
+import { apiErrorMessage } from '@/lib/api';
 
 const statusVariant: Record<string, 'warning' | 'info' | 'success' | 'danger'> = {
   in_progress: 'warning',
@@ -167,7 +168,7 @@ export default function ExitClearancesPage() {
           resetForm();
           router.push(`/hr/exit-clearances/${created.id}`);
         },
-        onError: () => toast.error('Failed to create exit clearance'),
+        onError: (err) => toast.error(apiErrorMessage(err, 'Failed to create exit clearance')),
       },
     );
   };

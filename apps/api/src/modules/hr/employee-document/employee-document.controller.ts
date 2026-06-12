@@ -8,7 +8,6 @@ import {
   Param,
   Query,
   Req,
-  Res,
   UseGuards,
   HttpCode,
   HttpStatus,
@@ -21,8 +20,9 @@ import {
   ApiBearerAuth,
   ApiQuery,
 } from '@nestjs/swagger';
-import type { Request, Response } from 'express';
+import type { Request } from 'express';
 import { EmployeeDocumentService } from './employee-document.service.js';
+import { StorageService } from '../../files/storage.service.js';
 import { JwtAuthGuard } from '../../../common/guards/auth.guard.js';
 import { PermissionsGuard } from '../../../common/guards/permissions.guard.js';
 import { SelfScopedGuard } from '../../../common/guards/self-scoped.guard.js';
@@ -42,7 +42,10 @@ import { UpdateDocumentDto } from './dto/update-document.dto.js';
 @Controller()
 @UseGuards(JwtAuthGuard, PermissionsGuard, SelfScopedGuard)
 export class EmployeeDocumentController {
-  constructor(private readonly service: EmployeeDocumentService) {}
+  constructor(
+    private readonly service: EmployeeDocumentService,
+    private readonly storage: StorageService,
+  ) {}
 
   // ─── HR-side endpoints ──────────────────────────────────
 
@@ -156,12 +159,15 @@ export class EmployeeDocumentController {
 
   @Get('ess/documents/:id/download')
   @ScopeToSelf()
-  @ApiOperation({ summary: 'Download my document (ESS)' })
+  @ApiOperation({
+    summary: 'Get a download URL for my document (ESS)',
+    description:
+      'Returns { url }. For GCS-stored documents this is a short-lived signed URL with attachment disposition; for externally pasted links it is the stored URL as-is. The client navigates to it directly (avoids CORS on cross-origin fetches).',
+  })
   async download(
     @CurrentTenant() tenantId: string,
     @Req() req: Request & { scopedEmployeeId?: string },
     @Param('id', UuidValidationPipe) id: string,
-    @Res() res: Response,
   ) {
     const employeeId = req.scopedEmployeeId;
     if (!employeeId) {
@@ -169,9 +175,12 @@ export class EmployeeDocumentController {
     }
     const doc = await this.service.findMineById(tenantId, employeeId, id);
 
-    // TODO: when MinIO storage service is wired up, stream the object body
-    // here. For now we redirect to the stored fileUrl which may be a
-    // pre-signed URL or external link set during upload.
-    return res.redirect(doc.fileUrl);
+    // GCS-backed documents store an object path (`<tenantId>/<uuid>-<name>`)
+    // rather than a URL — exchange it for a fresh signed download link.
+    if (!/^https?:\/\//i.test(doc.fileUrl)) {
+      const url = await this.storage.getSignedUrl(doc.fileUrl, 15, doc.name);
+      return { url };
+    }
+    return { url: doc.fileUrl };
   }
 }

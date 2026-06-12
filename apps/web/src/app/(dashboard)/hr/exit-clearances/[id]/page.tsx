@@ -18,6 +18,7 @@ import {
   useDeleteExitClearance,
 } from '@/hooks/use-exit-clearance';
 import { formatCurrency, formatDate } from '@/lib/utils';
+import { apiErrorMessage } from '@/lib/api';
 
 const statusVariant: Record<string, 'warning' | 'info' | 'success' | 'danger'> = {
   in_progress: 'warning',
@@ -110,7 +111,7 @@ export default function ExitClearanceDetailPage() {
       { id, data: { [key]: value } },
       {
         onSuccess: () => toast.success('Clearance updated'),
-        onError: () => toast.error('Failed to update clearance'),
+        onError: (err) => toast.error(apiErrorMessage(err, 'Failed to update clearance')),
       },
     );
   };
@@ -131,7 +132,7 @@ export default function ExitClearanceDetailPage() {
       },
       {
         onSuccess: () => toast.success('Full & final settlement recorded'),
-        onError: () => toast.error('Failed to settle'),
+        onError: (err) => toast.error(apiErrorMessage(err, 'Failed to settle')),
       },
     );
   };
@@ -143,7 +144,7 @@ export default function ExitClearanceDetailPage() {
         toast.success('Exit clearance deleted');
         router.push('/hr/exit-clearances');
       },
-      onError: () => toast.error('Failed to delete'),
+      onError: (err) => toast.error(apiErrorMessage(err, 'Failed to delete')),
     });
   };
 

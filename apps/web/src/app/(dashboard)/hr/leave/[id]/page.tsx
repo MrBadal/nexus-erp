@@ -1,5 +1,7 @@
 'use client';
 
+import { apiErrorMessage } from '@/lib/api';
+
 import { useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
@@ -78,14 +80,14 @@ export default function LeaveDetailPage() {
   function handleApprove() {
     approveMutation.mutate(leaveId, {
       onSuccess: () => toast.success('Leave application approved'),
-      onError: () => toast.error('Failed to approve leave application'),
+      onError: (err) => toast.error(apiErrorMessage(err, 'Failed to approve leave application')),
     });
   }
 
   function handleReject() {
     rejectMutation.mutate(leaveId, {
       onSuccess: () => toast.success('Leave application rejected'),
-      onError: () => toast.error('Failed to reject leave application'),
+      onError: (err) => toast.error(apiErrorMessage(err, 'Failed to reject leave application')),
     });
   }
 
@@ -93,7 +95,7 @@ export default function LeaveDetailPage() {
     if (!confirm('Cancel this leave application? If it was approved, the allocated days and attendance will be restored.')) return;
     cancelMutation.mutate(leaveId, {
       onSuccess: () => toast.success('Leave application cancelled'),
-      onError: () => toast.error('Failed to cancel leave application'),
+      onError: (err) => toast.error(apiErrorMessage(err, 'Failed to cancel leave application')),
     });
   }
 
@@ -104,7 +106,7 @@ export default function LeaveDetailPage() {
         toast.success('Leave application deleted');
         router.push('/hr/leave');
       },
-      onError: () => toast.error('Failed to delete leave application'),
+      onError: (err) => toast.error(apiErrorMessage(err, 'Failed to delete leave application')),
     });
   }
 

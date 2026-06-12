@@ -4,120 +4,121 @@ import { useState, useMemo, useCallback } from 'react';
 import { PageHeader } from '@/components/layout/page-header';
 import { ReportFilters } from '@/components/finance/report-filters';
 import { Card, CardContent } from '@/components/ui/card';
-import { CheckCircle2, XCircle } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
+import { AlertCircle, CheckCircle2, Scale, XCircle } from 'lucide-react';
+import {
+  useBalanceSheet,
+  downloadReportPdf,
+  type BalanceSheetResult,
+} from '@/hooks/use-reports';
+import { apiErrorMessage } from '@/lib/api';
+import { formatCurrency } from '@/lib/utils';
 
 interface ReportLine {
   label: string;
   amount?: number;
   indent?: number;
   isHeader?: boolean;
-  isSubHeader?: boolean;
   isSectionTotal?: boolean;
   isGrandTotal?: boolean;
 }
 
-const currencyFormatter = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-  minimumFractionDigits: 2,
-});
+function today(): string {
+  return new Date().toISOString().split('T')[0];
+}
 
 function formatAmount(amount: number): string {
   if (amount < 0) {
-    return `(${currencyFormatter.format(Math.abs(amount))})`;
+    return `(${formatCurrency(Math.abs(amount))})`;
   }
-  return currencyFormatter.format(amount);
+  return formatCurrency(amount);
 }
 
-function buildBalanceSheetData(): { lines: ReportLine[]; isBalanced: boolean } {
-  const currentAssets = [
-    { label: 'Cash', amount: 67650 },
-    { label: 'Bank Account', amount: 125000 },
-    { label: 'Accounts Receivable', amount: 89300 },
-    { label: 'Inventory', amount: 45000 },
-    { label: 'Prepaid Expenses', amount: 3200 },
-  ];
-  const totalCurrentAssets = currentAssets.reduce((s, i) => s + i.amount, 0);
+function buildLines(data: BalanceSheetResult): ReportLine[] {
+  const lines: ReportLine[] = [];
 
-  const fixedAssets = [
-    { label: 'Equipment', amount: 35000 },
-    { label: 'Furniture & Fixtures', amount: 12000 },
-    { label: 'Vehicles', amount: 28000 },
-    { label: 'Less: Accumulated Depreciation', amount: -15000 },
-  ];
-  const totalFixedAssets = fixedAssets.reduce((s, i) => s + i.amount, 0);
-  const totalAssets = totalCurrentAssets + totalFixedAssets;
+  lines.push({ label: 'ASSETS', isHeader: true });
+  for (const a of data.assets) {
+    lines.push({
+      label: `${a.accountCode} - ${a.accountName}`,
+      amount: parseFloat(a.balance),
+      indent: 1,
+    });
+  }
+  lines.push({
+    label: 'TOTAL ASSETS',
+    amount: parseFloat(data.totalAssets),
+    isGrandTotal: true,
+  });
+  lines.push({ label: '' });
 
-  const currentLiabilities = [
-    { label: 'Accounts Payable', amount: 45600 },
-    { label: 'Accrued Expenses', amount: 12500 },
-    { label: 'Sales Tax Payable', amount: 3200 },
-    { label: 'Unearned Revenue', amount: 8500 },
-  ];
-  const totalCurrentLiabilities = currentLiabilities.reduce((s, i) => s + i.amount, 0);
+  lines.push({ label: 'LIABILITIES', isHeader: true });
+  for (const l of data.liabilities) {
+    lines.push({
+      label: `${l.accountCode} - ${l.accountName}`,
+      amount: parseFloat(l.balance),
+      indent: 1,
+    });
+  }
+  lines.push({
+    label: 'TOTAL LIABILITIES',
+    amount: parseFloat(data.totalLiabilities),
+    isGrandTotal: true,
+  });
+  lines.push({ label: '' });
 
-  const longTermLiabilities = [{ label: 'Long-term Debt', amount: 85000 }];
-  const totalLongTermLiabilities = longTermLiabilities.reduce((s, i) => s + i.amount, 0);
-  const totalLiabilities = totalCurrentLiabilities + totalLongTermLiabilities;
+  lines.push({ label: 'EQUITY', isHeader: true });
+  for (const e of data.equity) {
+    lines.push({
+      label: `${e.accountCode} - ${e.accountName}`,
+      amount: parseFloat(e.balance),
+      indent: 1,
+    });
+  }
+  lines.push({
+    label: 'Retained Earnings (current period)',
+    amount: parseFloat(data.retainedEarnings),
+    indent: 1,
+  });
+  lines.push({
+    label: 'TOTAL EQUITY',
+    amount: parseFloat(data.totalEquity),
+    isGrandTotal: true,
+  });
+  lines.push({ label: '' });
 
-  const equityItems = [
-    { label: "Owner's Equity", amount: 150000 },
-    { label: 'Retained Earnings', amount: 85350 },
-  ];
-  const totalEquity = equityItems.reduce((s, i) => s + i.amount, 0);
-  const totalLiabilitiesAndEquity = totalLiabilities + totalEquity;
+  lines.push({
+    label: 'TOTAL LIABILITIES & EQUITY',
+    amount: parseFloat(data.totalLiabilities) + parseFloat(data.totalEquity),
+    isGrandTotal: true,
+  });
 
-  const isBalanced = totalAssets === totalLiabilitiesAndEquity;
-
-  const lines: ReportLine[] = [
-    { label: 'ASSETS', isHeader: true },
-    { label: 'Current Assets', isSubHeader: true },
-    ...currentAssets.map((i) => ({ label: i.label, amount: i.amount, indent: 2 })),
-    { label: 'Total Current Assets', amount: totalCurrentAssets, isSectionTotal: true, indent: 1 },
-    { label: '' },
-    { label: 'Fixed Assets', isSubHeader: true },
-    ...fixedAssets.map((i) => ({ label: i.label, amount: i.amount, indent: 2 })),
-    { label: 'Total Fixed Assets', amount: totalFixedAssets, isSectionTotal: true, indent: 1 },
-    { label: '' },
-    { label: 'TOTAL ASSETS', amount: totalAssets, isGrandTotal: true },
-    { label: '' },
-    { label: 'LIABILITIES', isHeader: true },
-    { label: 'Current Liabilities', isSubHeader: true },
-    ...currentLiabilities.map((i) => ({ label: i.label, amount: i.amount, indent: 2 })),
-    { label: 'Total Current Liabilities', amount: totalCurrentLiabilities, isSectionTotal: true, indent: 1 },
-    { label: '' },
-    { label: 'Long-term Liabilities', isSubHeader: true },
-    ...longTermLiabilities.map((i) => ({ label: i.label, amount: i.amount, indent: 2 })),
-    { label: 'Total Long-term Liabilities', amount: totalLongTermLiabilities, isSectionTotal: true, indent: 1 },
-    { label: '' },
-    { label: 'TOTAL LIABILITIES', amount: totalLiabilities, isGrandTotal: true },
-    { label: '' },
-    { label: 'EQUITY', isHeader: true },
-    ...equityItems.map((i) => ({ label: i.label, amount: i.amount, indent: 1 })),
-    { label: '' },
-    { label: 'TOTAL EQUITY', amount: totalEquity, isGrandTotal: true },
-    { label: '' },
-    { label: 'TOTAL LIABILITIES & EQUITY', amount: totalLiabilitiesAndEquity, isGrandTotal: true },
-  ];
-
-  return { lines, isBalanced };
+  return lines;
 }
 
 export default function BalanceSheetPage() {
-  const [asOfDate, setAsOfDate] = useState<string>('2026-03-31');
-  const [generated, setGenerated] = useState(true);
+  const [asOfDate, setAsOfDate] = useState<string>(today());
 
-  const { lines, isBalanced } = useMemo(() => buildBalanceSheetData(), []);
+  const { data, isLoading, isError, error, refetch, isFetching } =
+    useBalanceSheet(asOfDate);
+
+  const lines = useMemo(() => (data ? buildLines(data) : []), [data]);
+
+  const isEmpty =
+    !!data &&
+    data.assets.length === 0 &&
+    data.liabilities.length === 0 &&
+    data.equity.length === 0;
 
   const handleExportCsv = useCallback(() => {
+    if (!lines.length) return;
     const headers = ['', 'Amount'];
     const csvRows = lines
       .filter((line) => line.label !== '')
       .map((line) => {
         const indent = '  '.repeat(line.indent ?? 0);
-        const amt = line.amount !== undefined && !line.isHeader && !line.isSubHeader
-          ? line.amount.toFixed(2)
-          : '';
+        const amt =
+          line.amount !== undefined && !line.isHeader ? line.amount.toFixed(2) : '';
         return [`"${indent}${line.label}"`, amt].join(',');
       });
 
@@ -130,6 +131,14 @@ export default function BalanceSheetPage() {
     a.click();
     URL.revokeObjectURL(url);
   }, [lines, asOfDate]);
+
+  const handleExportPdf = useCallback(() => {
+    void downloadReportPdf(
+      'balance-sheet',
+      { asOfDate },
+      `Balance-Sheet-${asOfDate}.pdf`,
+    );
+  }, [asOfDate]);
 
   return (
     <div className="flex flex-col h-full">
@@ -146,90 +155,107 @@ export default function BalanceSheetPage() {
         showAsOfDate
         asOfDate={asOfDate}
         onAsOfDateChange={setAsOfDate}
-        onGenerate={() => setGenerated(true)}
+        onGenerate={() => refetch()}
         onExportCsv={handleExportCsv}
+        onExportPdf={handleExportPdf}
+        isLoading={isLoading || isFetching}
       />
 
       <div className="flex-1 overflow-auto p-6">
+        {isError && (
+          <div className="mb-4 flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <span>{apiErrorMessage(error, 'Failed to load balance sheet')}</span>
+          </div>
+        )}
+
         <Card>
           <CardContent className="p-0">
             <div className="px-4 py-3 border-b bg-muted/30 flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-semibold">Balance Sheet</h3>
-                <p className="text-xs text-muted-foreground">As of {asOfDate}</p>
+                <p className="text-xs text-muted-foreground">
+                  As of {data?.asOfDate ?? asOfDate}
+                </p>
               </div>
-              <div className="flex items-center gap-1.5">
-                {isBalanced ? (
-                  <>
-                    <CheckCircle2 className="h-4 w-4 text-green-600" />
-                    <span className="text-xs font-semibold text-green-600">Balanced</span>
-                  </>
-                ) : (
-                  <>
-                    <XCircle className="h-4 w-4 text-red-600" />
-                    <span className="text-xs font-semibold text-red-600">Unbalanced</span>
-                  </>
-                )}
-              </div>
+              {data && !isEmpty && (
+                <div className="flex items-center gap-1.5">
+                  {data.isBalanced ? (
+                    <>
+                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                      <span className="text-xs font-semibold text-green-600">Balanced</span>
+                    </>
+                  ) : (
+                    <>
+                      <XCircle className="h-4 w-4 text-red-600" />
+                      <span className="text-xs font-semibold text-red-600">Unbalanced</span>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
 
-            <div className="px-4 py-2">
-              {lines.map((line, idx) => {
-                if (line.label === '') {
-                  return <div key={idx} className="h-2" />;
-                }
+            {isLoading ? (
+              <div className="space-y-2 p-4">
+                {Array.from({ length: 10 }).map((_, i) => (
+                  <Skeleton key={i} className="h-7 w-full" />
+                ))}
+              </div>
+            ) : !isError && isEmpty ? (
+              <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
+                <Scale className="h-10 w-10 text-muted-foreground/40" />
+                <p className="text-sm font-medium">No data for this date</p>
+                <p className="text-xs text-muted-foreground">
+                  Post journal entries to see the balance sheet here.
+                </p>
+              </div>
+            ) : !isError && data ? (
+              <div className="px-4 py-2">
+                {lines.map((line, idx) => {
+                  if (line.label === '') {
+                    return <div key={idx} className="h-2" />;
+                  }
 
-                if (line.isHeader) {
-                  return (
-                    <div
-                      key={idx}
-                      className="flex items-center h-9 px-3 bg-muted/50 rounded-sm mt-1 mb-0.5"
-                    >
-                      <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
-                        {line.label}
-                      </span>
-                    </div>
-                  );
-                }
-
-                if (line.isSubHeader) {
-                  return (
-                    <div key={idx} className="flex items-center h-7 px-3" style={{ paddingLeft: 20 }}>
-                      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                        {line.label}
-                      </span>
-                    </div>
-                  );
-                }
-
-                if (line.isGrandTotal) {
-                  return (
-                    <div
-                      key={idx}
-                      className="flex items-center justify-between h-10 px-3 border-t-2 border-b-2 border-foreground/30 mt-1"
-                    >
-                      <span className="text-sm font-bold">{line.label}</span>
-                      <span
-                        className={`erp-number text-base font-bold ${
-                          (line.amount ?? 0) < 0 ? 'text-red-600' : ''
-                        }`}
+                  if (line.isHeader) {
+                    return (
+                      <div
+                        key={idx}
+                        className="flex items-center h-9 px-3 bg-muted/50 rounded-sm mt-1 mb-0.5"
                       >
-                        {formatAmount(line.amount ?? 0)}
-                      </span>
-                    </div>
-                  );
-                }
+                        <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                          {line.label}
+                        </span>
+                      </div>
+                    );
+                  }
 
-                if (line.isSectionTotal) {
+                  if (line.isGrandTotal) {
+                    return (
+                      <div
+                        key={idx}
+                        className="flex items-center justify-between h-10 px-3 border-t-2 border-b-2 border-foreground/30 mt-1"
+                      >
+                        <span className="text-sm font-bold">{line.label}</span>
+                        <span
+                          className={`erp-number text-base font-bold ${
+                            (line.amount ?? 0) < 0 ? 'text-red-600' : ''
+                          }`}
+                        >
+                          {formatAmount(line.amount ?? 0)}
+                        </span>
+                      </div>
+                    );
+                  }
+
                   return (
                     <div
                       key={idx}
-                      className="flex items-center justify-between h-8 px-3 border-t border-foreground/15"
+                      className="flex items-center justify-between h-7 px-3"
                       style={{ paddingLeft: (line.indent ?? 0) * 20 }}
                     >
-                      <span className="text-sm font-semibold">{line.label}</span>
+                      <span className="text-sm">{line.label}</span>
                       <span
-                        className={`erp-number font-semibold ${
+                        className={`erp-number ${
                           (line.amount ?? 0) < 0 ? 'text-red-600' : ''
                         }`}
                       >
@@ -237,24 +263,9 @@ export default function BalanceSheetPage() {
                       </span>
                     </div>
                   );
-                }
-
-                return (
-                  <div
-                    key={idx}
-                    className="flex items-center justify-between h-7 px-3"
-                    style={{ paddingLeft: (line.indent ?? 0) * 20 }}
-                  >
-                    <span className="text-sm">{line.label}</span>
-                    <span
-                      className={`erp-number ${(line.amount ?? 0) < 0 ? 'text-red-600' : ''}`}
-                    >
-                      {formatAmount(line.amount ?? 0)}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
+                })}
+              </div>
+            ) : null}
           </CardContent>
         </Card>
       </div>

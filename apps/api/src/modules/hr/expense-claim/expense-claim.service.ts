@@ -143,30 +143,35 @@ export class ExpenseClaimService {
       0,
     );
 
-    const [claim] = await this.db
-      .insert(expenseClaims)
-      .values({
-        tenantId,
-        claimNumber,
-        employeeId: dto.employeeId,
-        claimDate: dto.claimDate,
-        totalAmount: totalAmount.toFixed(4),
-        purpose: dto.purpose || null,
-        notes: dto.notes || null,
-      })
-      .returning();
+    // Atomic: claim header + lines must commit together
+    const claim = await this.db.transaction(async (tx) => {
+      const [created] = await tx
+        .insert(expenseClaims)
+        .values({
+          tenantId,
+          claimNumber,
+          employeeId: dto.employeeId,
+          claimDate: dto.claimDate,
+          totalAmount: totalAmount.toFixed(4),
+          purpose: dto.purpose || null,
+          notes: dto.notes || null,
+        })
+        .returning();
 
-    if (dto.lines?.length) {
-      await this.db.insert(expenseClaimLines).values(
-        dto.lines.map((line) => ({
-          expenseClaimId: claim.id,
-          expenseDate: line.expenseDate,
-          category: line.category,
-          description: line.description || null,
-          amount: line.amount,
-        })),
-      );
-    }
+      if (dto.lines?.length) {
+        await tx.insert(expenseClaimLines).values(
+          dto.lines.map((line) => ({
+            expenseClaimId: created.id,
+            expenseDate: line.expenseDate,
+            category: line.category,
+            description: line.description || null,
+            amount: line.amount,
+          })),
+        );
+      }
+
+      return created;
+    });
 
     return this.findById(tenantId, claim.id);
   }
@@ -178,42 +183,45 @@ export class ExpenseClaimService {
       throw new BadRequestException('Only draft expense claims can be updated');
     }
 
-    await this.db
-      .update(expenseClaims)
-      .set({
-        purpose: dto.purpose ?? existing.purpose,
-        notes: dto.notes ?? existing.notes,
-        updatedAt: new Date(),
-      })
-      .where(eq(expenseClaims.id, id));
-
-    if (dto.lines) {
-      await this.db
-        .delete(expenseClaimLines)
-        .where(eq(expenseClaimLines.expenseClaimId, id));
-
-      const totalAmount = dto.lines.reduce(
-        (sum, line) => sum + parseFloat(line.amount),
-        0,
-      );
-
-      await this.db
+    // Atomic: header update + line delete/reinsert + total update commit together
+    await this.db.transaction(async (tx) => {
+      await tx
         .update(expenseClaims)
-        .set({ totalAmount: totalAmount.toFixed(4) })
+        .set({
+          purpose: dto.purpose ?? existing.purpose,
+          notes: dto.notes ?? existing.notes,
+          updatedAt: new Date(),
+        })
         .where(eq(expenseClaims.id, id));
 
-      if (dto.lines.length) {
-        await this.db.insert(expenseClaimLines).values(
-          dto.lines.map((line) => ({
-            expenseClaimId: id,
-            expenseDate: line.expenseDate,
-            category: line.category,
-            description: line.description || null,
-            amount: line.amount,
-          })),
+      if (dto.lines) {
+        await tx
+          .delete(expenseClaimLines)
+          .where(eq(expenseClaimLines.expenseClaimId, id));
+
+        const totalAmount = dto.lines.reduce(
+          (sum, line) => sum + parseFloat(line.amount),
+          0,
         );
+
+        await tx
+          .update(expenseClaims)
+          .set({ totalAmount: totalAmount.toFixed(4) })
+          .where(eq(expenseClaims.id, id));
+
+        if (dto.lines.length) {
+          await tx.insert(expenseClaimLines).values(
+            dto.lines.map((line) => ({
+              expenseClaimId: id,
+              expenseDate: line.expenseDate,
+              category: line.category,
+              description: line.description || null,
+              amount: line.amount,
+            })),
+          );
+        }
       }
-    }
+    });
 
     return this.findById(tenantId, id);
   }
@@ -305,41 +313,47 @@ export class ExpenseClaimService {
       }
 
       const today = new Date().toISOString().split('T')[0];
-      const [je] = await this.db
-        .insert(journalEntries)
-        .values({
-          tenantId,
-          entryNumber: `JE-EXP-${claim.claimNumber}`,
-          date: today,
-          reference: `Expense Claim ${claim.claimNumber}`,
-          description: `Expense claim payment: ${claim.claimNumber}`,
-          totalDebit: claim.totalAmount,
-          totalCredit: claim.totalAmount,
-          status: 'posted',
-          postedDate: today,
-        })
-        .returning();
 
-      await this.db.insert(journalLines).values([
-        {
-          tenantId,
-          journalEntryId: je.id,
-          lineNumber: 1,
-          accountId: expenseAccount.id,
-          debitAmount: claim.totalAmount,
-          creditAmount: '0',
-          description: `Expense claim: ${claim.claimNumber}`,
-        },
-        {
-          tenantId,
-          journalEntryId: je.id,
-          lineNumber: 2,
-          accountId: payableAccount.id,
-          debitAmount: '0',
-          creditAmount: claim.totalAmount,
-          description: `Payable to employee for ${claim.claimNumber}`,
-        },
-      ]);
+      // Atomic: journal entry + lines commit together
+      const je = await this.db.transaction(async (tx) => {
+        const [created] = await tx
+          .insert(journalEntries)
+          .values({
+            tenantId,
+            entryNumber: `JE-EXP-${claim.claimNumber}`,
+            date: today,
+            reference: `Expense Claim ${claim.claimNumber}`,
+            description: `Expense claim payment: ${claim.claimNumber}`,
+            totalDebit: claim.totalAmount,
+            totalCredit: claim.totalAmount,
+            status: 'posted',
+            postedDate: today,
+          })
+          .returning();
+
+        await tx.insert(journalLines).values([
+          {
+            tenantId,
+            journalEntryId: created.id,
+            lineNumber: 1,
+            accountId: expenseAccount.id,
+            debitAmount: claim.totalAmount,
+            creditAmount: '0',
+            description: `Expense claim: ${claim.claimNumber}`,
+          },
+          {
+            tenantId,
+            journalEntryId: created.id,
+            lineNumber: 2,
+            accountId: payableAccount.id,
+            debitAmount: '0',
+            creditAmount: claim.totalAmount,
+            description: `Payable to employee for ${claim.claimNumber}`,
+          },
+        ]);
+
+        return created;
+      });
 
       this.logger.log(`Created journal entry ${je.entryNumber} for expense claim ${claim.claimNumber}`);
     } catch (err) {

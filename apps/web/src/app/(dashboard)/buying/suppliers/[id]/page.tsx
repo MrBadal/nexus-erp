@@ -29,6 +29,7 @@ import {
 } from '@/hooks/use-buying';
 import { useVendorLedger } from '@/hooks/use-reports';
 import { formatCurrency, formatDate } from '@/lib/utils';
+import { apiErrorMessage } from '@/lib/api';
 
 // ---------------------------------------------------------------------------
 // Cross-module tab sub-components
@@ -284,7 +285,7 @@ export default function SupplierDetailPage() {
       },
       {
         onSuccess: () => toast.success('Supplier saved'),
-        onError: () => toast.error('Failed to save supplier'),
+        onError: (err) => toast.error(apiErrorMessage(err, 'Failed to save supplier')),
       },
     );
   }
@@ -295,21 +296,21 @@ export default function SupplierDetailPage() {
         toast.success('Supplier deleted');
         router.push('/buying/suppliers');
       },
-      onError: () => toast.error('Failed to delete supplier'),
+      onError: (err) => toast.error(apiErrorMessage(err, 'Failed to delete supplier')),
     });
   }
 
   function handleActivate() {
     activateMutation.mutate(supplierId, {
       onSuccess: () => toast.success('Supplier activated'),
-      onError: () => toast.error('Failed to activate supplier'),
+      onError: (err) => toast.error(apiErrorMessage(err, 'Failed to activate supplier')),
     });
   }
 
   function handleDeactivate() {
     deactivateMutation.mutate(supplierId, {
       onSuccess: () => toast.success('Supplier deactivated'),
-      onError: () => toast.error('Failed to deactivate supplier'),
+      onError: (err) => toast.error(apiErrorMessage(err, 'Failed to deactivate supplier')),
     });
   }
 

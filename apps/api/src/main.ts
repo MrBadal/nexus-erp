@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { Logger, LoggerErrorInterceptor } from 'nestjs-pino';
+import helmet from 'helmet';
 import { AppModule } from './app.module.js';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter.js';
 
@@ -13,6 +14,15 @@ async function bootstrap() {
   const logger = app.get(Logger);
   app.useLogger(logger);
   app.useGlobalInterceptors(new LoggerErrorInterceptor());
+
+  // API sits behind Caddy reverse proxy — trust the first X-Forwarded-For hop
+  // so rate limiting (ThrottlerGuard) and logs key on the real client IP.
+  app.getHttpAdapter().getInstance().set('trust proxy', 1);
+
+  // Security headers. CSP disabled because this is a JSON API and the default
+  // CSP breaks the Swagger UI at /docs (inline scripts/styles). All other
+  // helmet protections (HSTS, nosniff, frameguard, etc.) remain active.
+  app.use(helmet({ contentSecurityPolicy: false }));
 
   app.enableCors({
     origin: process.env.CORS_ORIGIN || '*',
@@ -33,7 +43,8 @@ async function bootstrap() {
 
   app.useGlobalFilters(new HttpExceptionFilter());
 
-  app.setGlobalPrefix('api/v1');
+  // /health stays at the root (no /api/v1 prefix) for load-balancer probes
+  app.setGlobalPrefix('api/v1', { exclude: ['health'] });
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle('NexusERP API')

@@ -119,46 +119,51 @@ export class JournalEntryService {
 
     const exchangeRate = parseFloat(data.exchangeRate || '1');
 
-    const [entry] = await this.db
-      .insert(journalEntries)
-      .values({
+    // Atomic: entry header + lines must commit together
+    const entry = await this.db.transaction(async (tx) => {
+      const [created] = await tx
+        .insert(journalEntries)
+        .values({
+          tenantId,
+          entryNumber,
+          date: data.date,
+          reference: data.reference || null,
+          description: data.description || null,
+          sourceType: (data.sourceType as any) || 'manual',
+          sourceId: data.sourceId || null,
+          currencyCode: data.currencyCode || 'USD',
+          exchangeRate: data.exchangeRate || '1',
+          fiscalPeriodId: data.fiscalPeriodId || null,
+          totalDebit: totalDebit.toFixed(4),
+          totalCredit: totalCredit.toFixed(4),
+          tags: data.tags || null,
+          createdBy: userId,
+          status: 'draft',
+        })
+        .returning();
+
+      // Insert lines
+      const lineValues = data.lines.map((line, index) => ({
         tenantId,
-        entryNumber,
-        date: data.date,
-        reference: data.reference || null,
-        description: data.description || null,
-        sourceType: (data.sourceType as any) || 'manual',
-        sourceId: data.sourceId || null,
-        currencyCode: data.currencyCode || 'USD',
-        exchangeRate: data.exchangeRate || '1',
-        fiscalPeriodId: data.fiscalPeriodId || null,
-        totalDebit: totalDebit.toFixed(4),
-        totalCredit: totalCredit.toFixed(4),
-        tags: data.tags || null,
-        createdBy: userId,
-        status: 'draft',
-      })
-      .returning();
+        journalEntryId: created.id,
+        lineNumber: index + 1,
+        accountId: line.accountId,
+        description: line.description || null,
+        debitAmount: line.debitAmount || '0',
+        creditAmount: line.creditAmount || '0',
+        baseDebitAmount: (parseFloat(line.debitAmount || '0') * exchangeRate).toFixed(4),
+        baseCreditAmount: (parseFloat(line.creditAmount || '0') * exchangeRate).toFixed(4),
+        departmentId: line.departmentId || null,
+        projectId: line.projectId || null,
+        contactId: line.contactId || null,
+        taxRateId: line.taxRateId || null,
+        taxAmount: line.taxAmount || null,
+      }));
 
-    // Insert lines
-    const lineValues = data.lines.map((line, index) => ({
-      tenantId,
-      journalEntryId: entry.id,
-      lineNumber: index + 1,
-      accountId: line.accountId,
-      description: line.description || null,
-      debitAmount: line.debitAmount || '0',
-      creditAmount: line.creditAmount || '0',
-      baseDebitAmount: (parseFloat(line.debitAmount || '0') * exchangeRate).toFixed(4),
-      baseCreditAmount: (parseFloat(line.creditAmount || '0') * exchangeRate).toFixed(4),
-      departmentId: line.departmentId || null,
-      projectId: line.projectId || null,
-      contactId: line.contactId || null,
-      taxRateId: line.taxRateId || null,
-      taxAmount: line.taxAmount || null,
-    }));
+      await tx.insert(journalLines).values(lineValues);
 
-    await this.db.insert(journalLines).values(lineValues);
+      return created;
+    });
 
     return this.findById(tenantId, entry.id);
   }
@@ -195,50 +200,52 @@ export class JournalEntryService {
       }
     }
 
-    // Post the entry
-    const [posted] = await this.db
-      .update(journalEntries)
-      .set({
-        status: 'posted',
-        postedDate: new Date().toISOString().split('T')[0],
-        approvedBy: userId,
-        approvedAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .where(eq(journalEntries.id, id))
-      .returning();
+    // Atomic: status flip + all account balance updates commit together
+    await this.db.transaction(async (tx) => {
+      // Post the entry
+      await tx
+        .update(journalEntries)
+        .set({
+          status: 'posted',
+          postedDate: new Date().toISOString().split('T')[0],
+          approvedBy: userId,
+          approvedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(journalEntries.id, id));
 
-    // Update account balances
-    for (const line of entry.lines) {
-      const debit = parseFloat(line.debitAmount || '0');
-      const credit = parseFloat(line.creditAmount || '0');
+      // Update account balances
+      for (const line of entry.lines) {
+        const debit = parseFloat(line.debitAmount || '0');
+        const credit = parseFloat(line.creditAmount || '0');
 
-      if (debit > 0 || credit > 0) {
-        // Get account to determine normal balance
-        const [account] = await this.db
-          .select()
-          .from(accounts)
-          .where(eq(accounts.id, line.accountId))
-          .limit(1);
+        if (debit > 0 || credit > 0) {
+          // Get account to determine normal balance
+          const [account] = await tx
+            .select()
+            .from(accounts)
+            .where(eq(accounts.id, line.accountId))
+            .limit(1);
 
-        if (account) {
-          let balanceChange: number;
-          if (account.normalBalance === 'debit') {
-            balanceChange = debit - credit;
-          } else {
-            balanceChange = credit - debit;
+          if (account) {
+            let balanceChange: number;
+            if (account.normalBalance === 'debit') {
+              balanceChange = debit - credit;
+            } else {
+              balanceChange = credit - debit;
+            }
+
+            await tx
+              .update(accounts)
+              .set({
+                currentBalance: sql`${accounts.currentBalance} + ${balanceChange}`,
+                updatedAt: new Date(),
+              })
+              .where(eq(accounts.id, line.accountId));
           }
-
-          await this.db
-            .update(accounts)
-            .set({
-              currentBalance: sql`${accounts.currentBalance} + ${balanceChange}`,
-              updatedAt: new Date(),
-            })
-            .where(eq(accounts.id, line.accountId));
         }
       }
-    }
+    });
 
     this.eventEmitter.emit('journal.posted', {
       entryId: id,
@@ -264,57 +271,62 @@ export class JournalEntryService {
     const reversingEntryNumber = await this.generateEntryNumber(tenantId);
     const reversingDate = date || new Date().toISOString().split('T')[0];
 
-    const [reversingEntry] = await this.db
-      .insert(journalEntries)
-      .values({
+    // Atomic: reversing entry + lines + original status flip commit together
+    const reversingEntry = await this.db.transaction(async (tx) => {
+      const [reversing] = await tx
+        .insert(journalEntries)
+        .values({
+          tenantId,
+          entryNumber: reversingEntryNumber,
+          date: reversingDate,
+          reference: `Reversal of ${entry.entryNumber}`,
+          description: `Reversal: ${entry.description || entry.entryNumber}`,
+          sourceType: entry.sourceType as any,
+          sourceId: entry.sourceId,
+          status: 'draft',
+          isReversing: true,
+          reversesId: entry.id,
+          fiscalPeriodId: entry.fiscalPeriodId,
+          currencyCode: entry.currencyCode,
+          exchangeRate: entry.exchangeRate,
+          totalDebit: entry.totalCredit,
+          totalCredit: entry.totalDebit,
+          createdBy: userId,
+        })
+        .returning();
+
+      // Create reversed lines (swap debit/credit)
+      const reversedLines = entry.lines.map((line, index) => ({
         tenantId,
-        entryNumber: reversingEntryNumber,
-        date: reversingDate,
-        reference: `Reversal of ${entry.entryNumber}`,
-        description: `Reversal: ${entry.description || entry.entryNumber}`,
-        sourceType: entry.sourceType as any,
-        sourceId: entry.sourceId,
-        status: 'draft',
-        isReversing: true,
-        reversesId: entry.id,
-        fiscalPeriodId: entry.fiscalPeriodId,
-        currencyCode: entry.currencyCode,
-        exchangeRate: entry.exchangeRate,
-        totalDebit: entry.totalCredit,
-        totalCredit: entry.totalDebit,
-        createdBy: userId,
-      })
-      .returning();
+        journalEntryId: reversing.id,
+        lineNumber: index + 1,
+        accountId: line.accountId,
+        description: `Reversal: ${line.description || ''}`,
+        debitAmount: line.creditAmount || '0',
+        creditAmount: line.debitAmount || '0',
+        baseDebitAmount: line.baseCreditAmount || '0',
+        baseCreditAmount: line.baseDebitAmount || '0',
+        departmentId: line.departmentId,
+        projectId: line.projectId,
+        contactId: line.contactId,
+        taxRateId: line.taxRateId,
+        taxAmount: line.taxAmount,
+      }));
 
-    // Create reversed lines (swap debit/credit)
-    const reversedLines = entry.lines.map((line, index) => ({
-      tenantId,
-      journalEntryId: reversingEntry.id,
-      lineNumber: index + 1,
-      accountId: line.accountId,
-      description: `Reversal: ${line.description || ''}`,
-      debitAmount: line.creditAmount || '0',
-      creditAmount: line.debitAmount || '0',
-      baseDebitAmount: line.baseCreditAmount || '0',
-      baseCreditAmount: line.baseDebitAmount || '0',
-      departmentId: line.departmentId,
-      projectId: line.projectId,
-      contactId: line.contactId,
-      taxRateId: line.taxRateId,
-      taxAmount: line.taxAmount,
-    }));
+      await tx.insert(journalLines).values(reversedLines);
 
-    await this.db.insert(journalLines).values(reversedLines);
+      // Mark original as reversed
+      await tx
+        .update(journalEntries)
+        .set({
+          status: 'reversed',
+          reversedById: reversing.id,
+          updatedAt: new Date(),
+        })
+        .where(eq(journalEntries.id, id));
 
-    // Mark original as reversed
-    await this.db
-      .update(journalEntries)
-      .set({
-        status: 'reversed',
-        reversedById: reversingEntry.id,
-        updatedAt: new Date(),
-      })
-      .where(eq(journalEntries.id, id));
+      return reversing;
+    });
 
     this.eventEmitter.emit('journal.reversed', {
       originalEntryId: id,
@@ -354,11 +366,6 @@ export class JournalEntryService {
       updateData.totalDebit = totalDebit.toFixed(4);
       updateData.totalCredit = totalCredit.toFixed(4);
 
-      // Delete existing lines and re-insert
-      await this.db
-        .delete(journalLines)
-        .where(eq(journalLines.journalEntryId, id));
-
       const exchangeRate = parseFloat(data.exchangeRate || existing.exchangeRate || '1');
 
       const lineValues = data.lines.map((line, index) => ({
@@ -378,13 +385,23 @@ export class JournalEntryService {
         taxAmount: line.taxAmount || null,
       }));
 
-      await this.db.insert(journalLines).values(lineValues);
+      // Atomic: delete + reinsert lines + header update commit together
+      await this.db.transaction(async (tx) => {
+        await tx
+          .delete(journalLines)
+          .where(eq(journalLines.journalEntryId, id));
+        await tx.insert(journalLines).values(lineValues);
+        await tx
+          .update(journalEntries)
+          .set(updateData)
+          .where(eq(journalEntries.id, id));
+      });
+    } else {
+      await this.db
+        .update(journalEntries)
+        .set(updateData)
+        .where(eq(journalEntries.id, id));
     }
-
-    await this.db
-      .update(journalEntries)
-      .set(updateData)
-      .where(eq(journalEntries.id, id));
 
     return this.findById(tenantId, id);
   }
@@ -396,8 +413,11 @@ export class JournalEntryService {
       throw new BadRequestException('Only draft entries can be deleted');
     }
 
-    await this.db.delete(journalLines).where(eq(journalLines.journalEntryId, id));
-    await this.db.delete(journalEntries).where(eq(journalEntries.id, id));
+    // Atomic: lines + entry deletion commit together
+    await this.db.transaction(async (tx) => {
+      await tx.delete(journalLines).where(eq(journalLines.journalEntryId, id));
+      await tx.delete(journalEntries).where(eq(journalEntries.id, id));
+    });
 
     return { message: 'Journal entry deleted successfully' };
   }

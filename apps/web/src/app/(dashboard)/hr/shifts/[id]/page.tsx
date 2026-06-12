@@ -29,6 +29,7 @@ import {
   useDeactivateShiftAssignment,
 } from '@/hooks/use-shifts';
 import { useEmployees, type Employee } from '@/hooks/use-hr';
+import { apiErrorMessage } from '@/lib/api';
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -77,7 +78,7 @@ export default function ShiftDetailPage() {
       },
       {
         onSuccess: () => toast.success('Shift updated'),
-        onError: () => toast.error('Failed to update shift'),
+        onError: (err) => toast.error(apiErrorMessage(err, 'Failed to update shift')),
       },
     );
   };
@@ -217,7 +218,7 @@ function AssignmentsTab({ shiftId }: { shiftId: string }) {
           setEmployeeId('');
           setEffectiveTo('');
         },
-        onError: () => toast.error('Failed to assign'),
+        onError: (err) => toast.error(apiErrorMessage(err, 'Failed to assign')),
       },
     );
   };
@@ -228,7 +229,7 @@ function AssignmentsTab({ shiftId }: { shiftId: string }) {
       { id, effectiveTo: today },
       {
         onSuccess: () => toast.success('Assignment deactivated'),
-        onError: () => toast.error('Failed to deactivate'),
+        onError: (err) => toast.error(apiErrorMessage(err, 'Failed to deactivate')),
       },
     );
   };

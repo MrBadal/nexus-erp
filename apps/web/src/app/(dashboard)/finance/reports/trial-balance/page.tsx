@@ -1,63 +1,72 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { PageHeader } from '@/components/layout/page-header';
 import { ReportFilters } from '@/components/finance/report-filters';
 import { Card, CardContent } from '@/components/ui/card';
-import { CheckCircle2, XCircle } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
+import { AlertCircle, CheckCircle2, FileBarChart, XCircle } from 'lucide-react';
+import { useTrialBalance, downloadReportPdf } from '@/hooks/use-reports';
+import { apiErrorMessage } from '@/lib/api';
+import { formatCurrency } from '@/lib/utils';
 
-const demoTrialBalance = [
-  { code: '1000', name: 'Cash', debit: 67650, credit: 0 },
-  { code: '1100', name: 'Bank Account', debit: 125000, credit: 0 },
-  { code: '1200', name: 'Accounts Receivable', debit: 89300, credit: 0 },
-  { code: '1300', name: 'Inventory', debit: 45000, credit: 0 },
-  { code: '2000', name: 'Accounts Payable', debit: 0, credit: 45600 },
-  { code: '2100', name: 'Accrued Expenses', debit: 0, credit: 12500 },
-  { code: '3000', name: "Owner's Equity", debit: 0, credit: 150000 },
-  { code: '3100', name: 'Retained Earnings', debit: 0, credit: 85350 },
-  { code: '4000', name: 'Sales Revenue', debit: 0, credit: 284500 },
-  { code: '5000', name: 'Cost of Goods Sold', debit: 156200, credit: 0 },
-  { code: '6000', name: 'Operating Expenses', debit: 94800, credit: 0 },
-];
+function today(): string {
+  return new Date().toISOString().split('T')[0];
+}
 
-const currencyFormatter = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-  minimumFractionDigits: 2,
-});
-
-function formatCurrency(amount: number): string {
-  if (amount === 0) return '-';
-  return currencyFormatter.format(amount);
+function fmtAmount(value: string): string {
+  const n = parseFloat(value);
+  if (!n) return '-';
+  return formatCurrency(n);
 }
 
 export default function TrialBalancePage() {
-  const [dateFrom, setDateFrom] = useState<string>('2026-03-01');
-  const [dateTo, setDateTo] = useState<string>('2026-03-31');
-  const [generated, setGenerated] = useState(true);
+  const [asOfDate, setAsOfDate] = useState<string>(today());
 
-  const { totalDebit, totalCredit, isBalanced } = useMemo(() => {
-    const td = demoTrialBalance.reduce((sum, row) => sum + row.debit, 0);
-    const tc = demoTrialBalance.reduce((sum, row) => sum + row.credit, 0);
-    return { totalDebit: td, totalCredit: tc, isBalanced: td === tc };
-  }, []);
+  const { data, isLoading, isError, error, refetch, isFetching } =
+    useTrialBalance(asOfDate);
+
+  const rows = data?.rows ?? [];
 
   const handleExportCsv = useCallback(() => {
-    const headers = ['Account Code', 'Account Name', 'Debit', 'Credit'];
-    const csvRows = demoTrialBalance.map((row) =>
-      [row.code, `"${row.name}"`, row.debit.toFixed(2), row.credit.toFixed(2)].join(',')
+    if (!data) return;
+    const headers = ['Account Code', 'Account Name', 'Type', 'Debit', 'Credit'];
+    const csvRows = data.rows.map((row) =>
+      [
+        row.accountCode,
+        `"${row.accountName}"`,
+        row.accountType,
+        parseFloat(row.debitBalance).toFixed(2),
+        parseFloat(row.creditBalance).toFixed(2),
+      ].join(','),
     );
-    csvRows.push(['', 'TOTALS', totalDebit.toFixed(2), totalCredit.toFixed(2)].join(','));
+    csvRows.push(
+      [
+        '',
+        'TOTALS',
+        '',
+        parseFloat(data.totalDebits).toFixed(2),
+        parseFloat(data.totalCredits).toFixed(2),
+      ].join(','),
+    );
 
     const csv = [headers.join(','), ...csvRows].join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `trial-balance-${dateFrom}-${dateTo}.csv`;
+    a.download = `trial-balance-${asOfDate}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [dateFrom, dateTo, totalDebit, totalCredit]);
+  }, [data, asOfDate]);
+
+  const handleExportPdf = useCallback(() => {
+    void downloadReportPdf(
+      'trial-balance',
+      { asOfDate },
+      `Trial-Balance-${asOfDate}.pdf`,
+    );
+  }, [asOfDate]);
 
   return (
     <div className="flex flex-col h-full">
@@ -71,81 +80,106 @@ export default function TrialBalancePage() {
       />
 
       <ReportFilters
-        showDateRange
-        dateFrom={dateFrom}
-        dateTo={dateTo}
-        onDateFromChange={setDateFrom}
-        onDateToChange={setDateTo}
-        onGenerate={() => setGenerated(true)}
+        showAsOfDate
+        asOfDate={asOfDate}
+        onAsOfDateChange={setAsOfDate}
+        onGenerate={() => refetch()}
         onExportCsv={handleExportCsv}
+        onExportPdf={handleExportPdf}
+        isLoading={isLoading || isFetching}
       />
 
       <div className="flex-1 overflow-auto p-6">
+        {isError && (
+          <div className="mb-4 flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <span>{apiErrorMessage(error, 'Failed to load trial balance')}</span>
+          </div>
+        )}
+
         <Card>
           <CardContent className="p-0">
             <div className="px-4 py-3 border-b bg-muted/30 flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-semibold">Trial Balance</h3>
                 <p className="text-xs text-muted-foreground">
-                  Period: {dateFrom} to {dateTo}
+                  As of {data?.asOfDate ?? asOfDate}
                 </p>
               </div>
-              <div className="flex items-center gap-1.5">
-                {isBalanced ? (
-                  <>
-                    <CheckCircle2 className="h-4 w-4 text-green-600" />
-                    <span className="text-xs font-semibold text-green-600">Balanced</span>
-                  </>
-                ) : (
-                  <>
-                    <XCircle className="h-4 w-4 text-red-600" />
-                    <span className="text-xs font-semibold text-red-600">Unbalanced</span>
-                  </>
-                )}
-              </div>
+              {data && rows.length > 0 && (
+                <div className="flex items-center gap-1.5">
+                  {data.isBalanced ? (
+                    <>
+                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                      <span className="text-xs font-semibold text-green-600">Balanced</span>
+                    </>
+                  ) : (
+                    <>
+                      <XCircle className="h-4 w-4 text-red-600" />
+                      <span className="text-xs font-semibold text-red-600">Unbalanced</span>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
 
-            <table className="erp-table w-full">
-              <thead>
-                <tr className="border-b">
-                  <th className="text-left">Account Code</th>
-                  <th className="text-left">Account Name</th>
-                  <th className="text-right">Debit</th>
-                  <th className="text-right">Credit</th>
-                </tr>
-              </thead>
-              <tbody>
-                {demoTrialBalance.map((row) => (
-                  <tr key={row.code}>
-                    <td className="text-left font-mono text-xs">{row.code}</td>
-                    <td className="text-left">{row.name}</td>
-                    <td className="erp-number">{formatCurrency(row.debit)}</td>
-                    <td className="erp-number">{formatCurrency(row.credit)}</td>
-                  </tr>
+            {isLoading ? (
+              <div className="space-y-2 p-4">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <Skeleton key={i} className="h-8 w-full" />
                 ))}
-              </tbody>
-              <tfoot>
-                <tr className="border-t-2 border-foreground/20 font-semibold">
-                  <td colSpan={2} className="text-right font-semibold">
-                    Totals
-                  </td>
-                  <td
-                    className={`erp-number font-bold ${
-                      isBalanced ? 'text-green-600' : 'text-red-600'
-                    }`}
-                  >
-                    {currencyFormatter.format(totalDebit)}
-                  </td>
-                  <td
-                    className={`erp-number font-bold ${
-                      isBalanced ? 'text-green-600' : 'text-red-600'
-                    }`}
-                  >
-                    {currencyFormatter.format(totalCredit)}
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
+              </div>
+            ) : !isError && rows.length === 0 ? (
+              <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
+                <FileBarChart className="h-10 w-10 text-muted-foreground/40" />
+                <p className="text-sm font-medium">No data for this period</p>
+                <p className="text-xs text-muted-foreground">
+                  Post journal entries to see account balances here.
+                </p>
+              </div>
+            ) : !isError ? (
+              <table className="erp-table w-full">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left">Account Code</th>
+                    <th className="text-left">Account Name</th>
+                    <th className="text-right">Debit</th>
+                    <th className="text-right">Credit</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row) => (
+                    <tr key={row.accountId}>
+                      <td className="text-left font-mono text-xs">{row.accountCode}</td>
+                      <td className="text-left">{row.accountName}</td>
+                      <td className="erp-number">{fmtAmount(row.debitBalance)}</td>
+                      <td className="erp-number">{fmtAmount(row.creditBalance)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-foreground/20 font-semibold">
+                    <td colSpan={2} className="text-right font-semibold">
+                      Totals
+                    </td>
+                    <td
+                      className={`erp-number font-bold ${
+                        data?.isBalanced ? 'text-green-600' : 'text-red-600'
+                      }`}
+                    >
+                      {formatCurrency(parseFloat(data?.totalDebits ?? '0'))}
+                    </td>
+                    <td
+                      className={`erp-number font-bold ${
+                        data?.isBalanced ? 'text-green-600' : 'text-red-600'
+                      }`}
+                    >
+                      {formatCurrency(parseFloat(data?.totalCredits ?? '0'))}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            ) : null}
           </CardContent>
         </Card>
       </div>

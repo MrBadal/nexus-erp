@@ -11,6 +11,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { FileUpload } from '@/components/ui/file-upload';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -69,17 +70,6 @@ export function UploadDialog({ trigger, defaultEmployeeId }: UploadDialogProps) 
     setError(null);
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!name) setName(file.name);
-    setMimeType(file.type || '');
-    setFileSize(file.size);
-    // TODO: when MinIO storage service is wired up, upload the file here and
-    // store the returned object URL in `fileUrl`. For now the user must
-    // paste a URL manually.
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -88,7 +78,7 @@ export function UploadDialog({ trigger, defaultEmployeeId }: UploadDialogProps) 
       return;
     }
     if (!fileUrl) {
-      setError('A file URL is required (upload service not yet connected).');
+      setError('Upload a file or paste a file URL.');
       return;
     }
     try {
@@ -180,22 +170,24 @@ export function UploadDialog({ trigger, defaultEmployeeId }: UploadDialogProps) 
             </div>
 
             <div className="grid gap-2">
-              <Label htmlFor="ed-file">File</Label>
-              <Input id="ed-file" type="file" onChange={handleFileChange} />
-              <p className="text-xs text-muted-foreground">
-                Storage service (MinIO) not yet wired — paste the file URL
-                below after uploading manually.
-              </p>
-            </div>
-
-            <div className="grid gap-2">
-              <Label htmlFor="ed-url">File URL</Label>
+              <Label>File</Label>
+              <FileUpload
+                endpoint="/files/upload/document"
+                accept="image/png,image/jpeg,image/webp,image/svg+xml,application/pdf,.doc,.docx"
+                maxSizeMb={10}
+                label="Upload file"
+                onUploaded={(res) => setFileUrl(res.path ?? res.url ?? '')}
+              />
               <Input
                 id="ed-url"
                 value={fileUrl}
                 onChange={(e) => setFileUrl(e.target.value)}
-                placeholder="https://..."
+                placeholder="…or paste an external link (https://...)"
               />
+              <p className="text-xs text-muted-foreground">
+                Upload directly to secure cloud storage, or paste an external
+                URL as a fallback.
+              </p>
             </div>
 
             <div className="grid grid-cols-2 gap-4">

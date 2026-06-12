@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { Download, FileText, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import {
@@ -204,7 +205,9 @@ export default function HrDocumentsPage() {
                               downloadEmployeeDocument({
                                 fileUrl: d.fileUrl,
                                 name: d.name,
-                              })
+                              }).catch(() =>
+                                toast.error('Failed to open document'),
+                              )
                             }
                           >
                             <Download className="h-4 w-4" />

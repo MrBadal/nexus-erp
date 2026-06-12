@@ -5,6 +5,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { toast } from "sonner";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
+import { BrandProvider } from "@/components/layout/brand-provider";
 import { useAuthStore } from "@/stores/auth.store";
 import {
   getRequiredPrefixesForPath,
@@ -86,12 +87,14 @@ export default function DashboardLayout({
   }
 
   return (
-    <div className="flex h-screen overflow-hidden">
-      <Sidebar />
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <Header />
-        <main className="flex-1 overflow-y-auto bg-muted/30 p-6">{children}</main>
+    <BrandProvider>
+      <div className="flex h-screen overflow-hidden">
+        <Sidebar />
+        <div className="flex flex-1 flex-col overflow-hidden">
+          <Header />
+          <main className="flex-1 overflow-y-auto bg-muted/30 p-6">{children}</main>
+        </div>
       </div>
-    </div>
+    </BrandProvider>
   );
 }

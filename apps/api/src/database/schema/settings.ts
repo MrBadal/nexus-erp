@@ -28,6 +28,11 @@ export const businessSettings = pgTable('business_settings', {
   // Business info
   industry: varchar('industry', { length: 100 }),
   logoUrl: text('logo_url'),
+  // White-label branding
+  appName: varchar('app_name', { length: 100 }),
+  brandColor: varchar('brand_color', { length: 7 }), // hex e.g. #2563eb
+  loginWelcomeText: varchar('login_welcome_text', { length: 255 }),
+  loginBgUrl: text('login_bg_url'),
   // Defaults
   defaultCurrency: varchar('default_currency', { length: 3 }).default('INR').notNull(),
   fiscalYearStartMonth: integer('fiscal_year_start_month').default(4).notNull(), // April for India

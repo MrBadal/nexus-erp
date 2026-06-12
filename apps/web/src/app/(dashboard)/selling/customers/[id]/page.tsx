@@ -28,6 +28,7 @@ import {
 } from '@/hooks/use-selling';
 import { useInvoices, type Invoice } from '@/hooks/use-invoices';
 import { formatCurrency, formatDate } from '@/lib/utils';
+import { apiErrorMessage } from '@/lib/api';
 
 // ---------------------------------------------------------------------------
 // Cross-module tab sub-components
@@ -253,7 +254,7 @@ export default function CustomerDetailPage() {
       },
       {
         onSuccess: () => toast.success('Customer saved'),
-        onError: () => toast.error('Failed to save customer'),
+        onError: (err) => toast.error(apiErrorMessage(err, 'Failed to save customer')),
       },
     );
   }
@@ -265,7 +266,7 @@ export default function CustomerDetailPage() {
         toast.success('Customer deleted');
         router.push('/selling/customers');
       },
-      onError: () => toast.error('Failed to delete customer'),
+      onError: (err) => toast.error(apiErrorMessage(err, 'Failed to delete customer')),
     });
   }
 
@@ -279,7 +280,7 @@ export default function CustomerDetailPage() {
           setLocalStatus(newStatus);
           toast.success(`Customer ${newStatus === 'active' ? 'activated' : 'deactivated'}`);
         },
-        onError: () => toast.error('Failed to update status'),
+        onError: (err) => toast.error(apiErrorMessage(err, 'Failed to update status')),
       },
     );
   }
