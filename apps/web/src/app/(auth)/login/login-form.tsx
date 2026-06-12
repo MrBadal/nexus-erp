@@ -139,7 +139,11 @@ export function LoginForm({ fixedTenantSlug, accentColor = "#1B4F72" }: LoginFor
           <span className="text-xs text-muted-foreground">Remember me</span>
         </label>
         <Link
-          href="/forgot-password"
+          href={
+            fixedTenantSlug
+              ? `/forgot-password?org=${encodeURIComponent(fixedTenantSlug)}`
+              : "/forgot-password"
+          }
           className="text-xs font-medium hover:underline"
           style={{ color: accentColor }}
         >

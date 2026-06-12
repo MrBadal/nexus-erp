@@ -31,13 +31,22 @@ export class EmailListener {
   @OnEvent('auth.forgot-password')
   async onForgotPassword(payload: { userId: string; email: string; resetToken: string }) {
     const [user] = await this.db
-      .select({ id: users.id, tenantId: users.tenantId, firstName: users.firstName, email: users.email })
+      .select({
+        id: users.id,
+        tenantId: users.tenantId,
+        firstName: users.firstName,
+        email: users.email,
+        tenantSlug: tenants.slug,
+      })
       .from(users)
+      .leftJoin(tenants, eq(tenants.id, users.tenantId))
       .where(eq(users.id, payload.userId))
       .limit(1);
     if (!user) return;
 
-    const url = `${this.getPublicUrl()}/set-password?token=${encodeURIComponent(payload.resetToken)}`;
+    // Carry the org slug so the set-password screen renders the tenant's branding.
+    const orgParam = user.tenantSlug ? `&org=${encodeURIComponent(user.tenantSlug)}` : '';
+    const url = `${this.getPublicUrl()}/set-password?token=${encodeURIComponent(payload.resetToken)}${orgParam}`;
     const html = this.emailService.wrapTemplate(
       'Reset your NexusERP password',
       `<p>Hi ${this.escape(user.firstName) || 'there'},</p>
@@ -104,10 +113,15 @@ export class EmailListener {
     if (!user) return;
 
     const [tenant] = await this.db
-      .select({ name: tenants.name })
+      .select({ name: tenants.name, slug: tenants.slug })
       .from(tenants)
       .where(eq(tenants.id, payload.tenantId))
       .limit(1);
+
+    // Carry org slug so the set-password screen the link opens stays on-brand.
+    const activationUrl = tenant?.slug
+      ? `${payload.activationUrl}&org=${encodeURIComponent(tenant.slug)}`
+      : payload.activationUrl;
 
     const html = this.emailService.wrapTemplate(
       `Welcome to ${this.escape(tenant?.name || 'NexusERP')}`,
@@ -117,7 +131,7 @@ export class EmailListener {
        Click the button below to set your password and sign in. The link is
        valid for 7 days.</p>
        <p>Once activated, use this email (<strong>${this.escape(user.email)}</strong>) to log in.</p>`,
-      payload.activationUrl,
+      activationUrl,
       'Activate my account',
     );
     await this.emailService.send({
