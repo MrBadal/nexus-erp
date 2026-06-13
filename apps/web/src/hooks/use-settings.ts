@@ -69,6 +69,32 @@ export function useDeleteUser() {
   });
 }
 
+/** Current user's own profile (GET /users/me). */
+export function useMyProfile() {
+  return useQuery({
+    queryKey: [...userKeys.all, 'me'],
+    queryFn: () => get<UserRecord>(endpoints.users.me),
+  });
+}
+
+/** Change own password (PUT /users/me/password). */
+export function useChangeMyPassword() {
+  return useMutation({
+    mutationFn: (data: { currentPassword: string; newPassword: string }) =>
+      put<{ message: string }>(endpoints.users.changeMyPassword, data),
+  });
+}
+
+/** Admin: re-issue an invite/reset link for a user (emails it + returns the URL). */
+export function useResendInvite() {
+  return useMutation({
+    mutationFn: (id: string) =>
+      post<{ activationUrl: string; emailQueued?: boolean }>(
+        endpoints.users.issueResetLink(id),
+      ),
+  });
+}
+
 // ─── Roles ─────────────────────────────────────────────────────────────────
 export interface RoleRecord {
   id: string;

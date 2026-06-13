@@ -26,6 +26,8 @@ import { CreateEmployeeDto } from './dto/create-employee.dto.js';
 import { UpdateEmployeeDto } from './dto/update-employee.dto.js';
 import { CreateDepartmentDto } from './dto/create-department.dto.js';
 import { CreateDesignationDto } from './dto/create-designation.dto.js';
+import { UpdateDepartmentDto } from './dto/update-department.dto.js';
+import { UpdateDesignationDto } from './dto/update-designation.dto.js';
 
 @ApiTags('hr-employees')
 @ApiBearerAuth()
@@ -189,7 +191,7 @@ export class EmployeeController {
   async updateDepartment(
     @CurrentTenant() tenantId: string,
     @Param('id', UuidValidationPipe) id: string,
-    @Body() body: CreateDepartmentDto,
+    @Body() body: UpdateDepartmentDto,
   ) {
     return this.employeeService.updateDepartment(tenantId, id, body);
   }
@@ -246,7 +248,7 @@ export class EmployeeController {
   async updateDesignation(
     @CurrentTenant() tenantId: string,
     @Param('id', UuidValidationPipe) id: string,
-    @Body() body: CreateDesignationDto,
+    @Body() body: UpdateDesignationDto,
   ) {
     return this.employeeService.updateDesignation(tenantId, id, body);
   }

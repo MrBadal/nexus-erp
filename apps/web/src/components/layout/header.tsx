@@ -23,6 +23,8 @@ import { Button } from "@/components/ui/button";
 import { useAuthStore } from "@/stores/auth.store";
 import { cn } from "@/lib/utils";
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function getBreadcrumbs(pathname: string): { label: string; href: string }[] {
   const segments = pathname.split("/").filter(Boolean);
   const crumbs: { label: string; href: string }[] = [];
@@ -30,6 +32,9 @@ function getBreadcrumbs(pathname: string): { label: string; href: string }[] {
 
   for (const segment of segments) {
     currentPath += `/${segment}`;
+    // Skip record-id segments (UUIDs, pure numbers) — they render as ugly raw
+    // IDs and the detail page already shows a meaningful breadcrumb of its own.
+    if (UUID_RE.test(segment) || /^\d+$/.test(segment)) continue;
     crumbs.push({
       label: segment
         .replace(/-/g, " ")
@@ -169,13 +174,23 @@ export function Header() {
                   {user?.email ?? "user@example.com"}
                 </DropdownMenu.Label>
                 <DropdownMenu.Separator className="my-1 h-px bg-border" />
-                <DropdownMenu.Item className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent">
-                  <UserCircle className="h-4 w-4" />
-                  Profile
+                <DropdownMenu.Item asChild>
+                  <Link
+                    href="/account"
+                    className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent"
+                  >
+                    <UserCircle className="h-4 w-4" />
+                    My Account
+                  </Link>
                 </DropdownMenu.Item>
-                <DropdownMenu.Item className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent">
-                  <Settings className="h-4 w-4" />
-                  Settings
+                <DropdownMenu.Item asChild>
+                  <Link
+                    href="/settings"
+                    className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent"
+                  >
+                    <Settings className="h-4 w-4" />
+                    Settings
+                  </Link>
                 </DropdownMenu.Item>
                 <DropdownMenu.Separator className="my-1 h-px bg-border" />
                 <DropdownMenu.Item

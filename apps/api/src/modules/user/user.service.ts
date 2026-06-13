@@ -94,6 +94,7 @@ export class UserService {
         avatarUrl: users.avatarUrl,
         phone: users.phone,
         roleId: users.roleId,
+        employeeId: users.employeeId,
         status: users.status,
         emailVerifiedAt: users.emailVerifiedAt,
         mfaEnabled: users.mfaEnabled,

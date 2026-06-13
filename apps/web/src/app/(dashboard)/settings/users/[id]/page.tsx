@@ -24,7 +24,8 @@ import {
   useDeleteUser,
   useRoles,
 } from '@/hooks/use-settings';
-import api, { endpoints } from '@/lib/api';
+import { useEmployees } from '@/hooks/use-hr';
+import api, { endpoints, apiErrorMessage } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
 
 const statusVariant: Record<string, 'success' | 'muted' | 'danger' | 'warning'> = {
@@ -47,6 +48,7 @@ export default function UserDetailPage() {
 
   const { data: user, isLoading } = useUser(userId);
   const { data: roles } = useRoles();
+  const { data: employees } = useEmployees();
   const updateMutation = useUpdateUser();
   const deleteMutation = useDeleteUser();
 
@@ -111,7 +113,7 @@ export default function UserDetailPage() {
       },
       {
         onSuccess: () => toast.success('User updated'),
-        onError: (err: Error) => toast.error(err.message || 'Failed to update'),
+        onError: (err) => toast.error(apiErrorMessage(err, 'Failed to update')),
       },
     );
   };
@@ -122,12 +124,17 @@ export default function UserDetailPage() {
         endpoints.users.issueResetLink(userId),
       );
       await navigator.clipboard.writeText(data.activationUrl);
-      toast.success('Password reset email sent to the user', {
-        description:
-          'A reset link was emailed (if SMTP is configured) and also copied to your clipboard as a fallback. Valid 7 days, single-use.',
-      });
+      toast.success(
+        status === 'pending_verification'
+          ? 'Invite re-sent to the user'
+          : 'Password reset email sent to the user',
+        {
+          description:
+            'Emailed (if SMTP is configured) and copied to your clipboard as a fallback. Valid 7 days, single-use.',
+        },
+      );
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to issue link');
+      toast.error(apiErrorMessage(err, 'Failed to issue link'));
     }
   };
 
@@ -138,11 +145,15 @@ export default function UserDetailPage() {
         toast.success('User deactivated');
         router.push('/settings/users');
       },
-      onError: (err: Error) => toast.error(err.message || 'Failed to deactivate'),
+      onError: (err) => toast.error(apiErrorMessage(err, 'Failed to deactivate')),
     });
   };
 
   const status = (user.status ?? 'active') as string;
+  const linkedEmployeeId = (user as { employeeId?: string | null }).employeeId ?? null;
+  const linkedEmployee = linkedEmployeeId
+    ? (employees ?? []).find((e) => e.id === linkedEmployeeId)
+    : undefined;
 
   return (
     <div className="space-y-6 p-6 max-w-3xl">
@@ -257,6 +268,22 @@ export default function UserDetailPage() {
           <CardTitle className="text-base">Activity</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2 text-sm">
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Employee link</span>
+            <span>
+              {linkedEmployeeId ? (
+                linkedEmployee ? (
+                  <span className="font-medium">
+                    {linkedEmployee.firstName} {linkedEmployee.lastName} ({linkedEmployee.employeeId})
+                  </span>
+                ) : (
+                  <span className="font-medium">Linked</span>
+                )
+              ) : (
+                <span className="text-muted-foreground">Not linked (staff login)</span>
+              )}
+            </span>
+          </div>
           <div className="flex justify-between">
             <span className="text-muted-foreground">Last login</span>
             <span>

@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { ChangePasswordCard } from '@/components/account/change-password-card';
 
 export default function EssProfilePage() {
   const { data: profile, isLoading } = useEssProfile();
@@ -145,6 +146,8 @@ export default function EssProfilePage() {
           </form>
         </CardContent>
       </Card>
+
+      <ChangePasswordCard />
     </div>
   );
 }

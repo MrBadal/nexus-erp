@@ -6,7 +6,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { eq, and, isNull, asc, desc, ilike, or, sql, ne } from 'drizzle-orm';
+import { eq, and, isNull, asc, desc, ilike, or, sql, ne, inArray } from 'drizzle-orm';
 import { DATABASE, DrizzleDB } from '../../../database/database.module.js';
 import {
   employees,
@@ -421,12 +421,59 @@ export class EmployeeService {
 
   // ─── Departments ────────────────────────────────────────
 
+  /**
+   * Enrich department rows with the resolved `manager` name and live
+   * `headcount` so the detail DETAILS panel and the list show the same shape
+   * (the form already resolves managerId client-side). One query per concern.
+   */
+  private async enrichDepartments<T extends { id: string; managerId: string | null }>(
+    tenantId: string,
+    rows: T[],
+  ): Promise<(T & { manager: string | null; headcount: number })[]> {
+    if (rows.length === 0) return [];
+
+    const managerIds = [...new Set(rows.map((r) => r.managerId).filter(Boolean))] as string[];
+    const managerNames = new Map<string, string>();
+    if (managerIds.length > 0) {
+      const mgrs = await this.db
+        .select({
+          id: employees.id,
+          firstName: employees.firstName,
+          lastName: employees.lastName,
+          employeeId: employees.employeeId,
+        })
+        .from(employees)
+        .where(and(eq(employees.tenantId, tenantId), inArray(employees.id, managerIds)));
+      for (const m of mgrs) {
+        managerNames.set(m.id, `${m.firstName} ${m.lastName} (${m.employeeId})`);
+      }
+    }
+
+    // Headcount per department (active employees).
+    const counts = await this.db
+      .select({ departmentId: employees.departmentId, count: sql<number>`count(*)::int` })
+      .from(employees)
+      .where(and(eq(employees.tenantId, tenantId), isNull(employees.deletedAt)))
+      .groupBy(employees.departmentId);
+    const headcounts = new Map<string, number>();
+    for (const c of counts) {
+      if (c.departmentId) headcounts.set(c.departmentId, Number(c.count));
+    }
+
+    return rows.map((r) => ({
+      ...r,
+      manager: r.managerId ? managerNames.get(r.managerId) ?? null : null,
+      headcount: headcounts.get(r.id) ?? 0,
+    }));
+  }
+
   async findAllDepartments(tenantId: string) {
-    return this.db
+    const rows = await this.db
       .select()
       .from(departments)
       .where(and(eq(departments.tenantId, tenantId), isNull(departments.deletedAt)))
       .orderBy(asc(departments.name));
+    return this.enrichDepartments(tenantId, rows);
   }
 
   async getDepartmentTree(tenantId: string) {
@@ -580,7 +627,8 @@ export class EmployeeService {
     if (!department) {
       throw new NotFoundException(`Department with ID "${id}" not found`);
     }
-    return department;
+    const [enriched] = await this.enrichDepartments(tenantId, [department]);
+    return enriched;
   }
 
   /**

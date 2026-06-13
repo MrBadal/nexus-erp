@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { ShoppingCart, Users, FileText, Truck, DollarSign, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatCurrency, formatDate } from '@/lib/utils';
@@ -15,6 +16,7 @@ const statusColors: Record<string, string> = {
 };
 
 export default function SellingDashboardPage() {
+  const router = useRouter();
   const { data: ordersData, isLoading: ordersLoading } = useSalesOrders({ limit: 5, sort_by: 'created_at', sort_order: 'desc' });
   const { data: customersData } = useCustomers({ limit: 100 });
   const { data: quotationsData } = useQuotations({ limit: 100 });
@@ -90,7 +92,7 @@ export default function SellingDashboardPage() {
                 </thead>
                 <tbody>
                   {orders.slice(0, 5).map((order: SalesOrder) => (
-                    <tr key={order.id} className="border-b hover:bg-muted/30 cursor-pointer" onClick={() => {}}>
+                    <tr key={order.id} className="border-b hover:bg-muted/30 cursor-pointer" onClick={() => router.push(`/selling/sales-orders/${order.id}`)}>
                       <td className="px-4 py-2 font-mono text-xs">{order.orderNumber}</td>
                       <td className="px-4 py-2">{order.customerName ?? order.customer ?? '\u2014'}</td>
                       <td className="px-4 py-2 text-muted-foreground">{formatDate(order.orderDate)}</td>
