@@ -15,12 +15,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import {
   useCreateEmployee,
   useDepartments,
   useDesignations,
   useEmployees,
 } from '@/hooks/use-hr';
+import api, { endpoints, apiErrorMessage } from '@/lib/api';
 
 // ─── Indian validators (mirrors backend DTO) ───
 const PAN_REGEX = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
@@ -92,6 +94,7 @@ export default function NewEmployeePage() {
   const router = useRouter();
   const [form, setForm] = useState<FormData>(initialFormData);
   const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>({});
+  const [inviteToPortal, setInviteToPortal] = useState(false);
   const createEmployee = useCreateEmployee();
   const { data: departments } = useDepartments();
   const { data: designations } = useDesignations();
@@ -183,15 +186,39 @@ export default function NewEmployeePage() {
     // Strip undefined keys so server-side `whitelist` validator stays clean.
     Object.keys(payload).forEach((k) => payload[k] === undefined && delete payload[k]);
 
-    createEmployee.mutate(payload as never, {
-      onSuccess: () => {
+    void doSubmit(payload);
+  };
+
+  const doSubmit = async (payload: Record<string, unknown>) => {
+    try {
+      const created = (await createEmployee.mutateAsync(payload as never)) as { id: string };
+
+      if (inviteToPortal && created?.id) {
+        // One-step: provision the portal login + email the activation link.
+        try {
+          const { data } = await api.post<{ activationUrl?: string }>(
+            endpoints.employees.inviteToPortal(created.id),
+          );
+          if (data?.activationUrl) {
+            await navigator.clipboard.writeText(data.activationUrl).catch(() => {});
+            toast.success('Employee created & invited to portal', {
+              description: 'Activation link emailed and copied to your clipboard.',
+            });
+          } else {
+            toast.success('Employee created & invited to portal');
+          }
+        } catch (inviteErr) {
+          toast.warning(
+            `Employee created, but the portal invite failed: ${apiErrorMessage(inviteErr, 'unknown error')}. You can retry from the employee page.`,
+          );
+        }
+      } else {
         toast.success('Employee created successfully');
-        router.push('/hr/employees');
-      },
-      onError: (error: Error) => {
-        toast.error(error.message || 'Failed to create employee');
-      },
-    });
+      }
+      router.push('/hr/employees');
+    } catch (error) {
+      toast.error(apiErrorMessage(error, 'Failed to create employee'));
+    }
   };
 
   return (
@@ -382,6 +409,25 @@ export default function NewEmployeePage() {
           <FormField label="Contact Phone" error={errors.emergencyContactPhone}>
             <Input type="tel" value={form.emergencyContactPhone} onChange={(e) => update('emergencyContactPhone', e.target.value)} placeholder="+91 9876543210" />
           </FormField>
+        </FormSection>
+
+        <FormSection title="Portal Access" columns={1}>
+          <div className="flex items-start gap-3 rounded-md border p-3">
+            <Switch
+              checked={inviteToPortal}
+              onCheckedChange={setInviteToPortal}
+              className="mt-0.5"
+            />
+            <div className="text-sm">
+              <div className="font-medium">Invite to Employee Self-Service portal now</div>
+              <p className="text-xs text-muted-foreground">
+                Creates this employee&apos;s login (Employee role) and emails them an
+                activation link to set their own password — the same one-click flow as the
+                &quot;Invite to Portal&quot; button on the employee page. Leave off to add the
+                login later.
+              </p>
+            </div>
+          </div>
         </FormSection>
       </div>
     </FormPage>

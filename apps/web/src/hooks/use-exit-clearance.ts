@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { get, post, put, del } from '@/lib/api';
+import { get, post, put, del, endpoints } from '@/lib/api';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -87,8 +87,6 @@ export const exitClearanceKeys = {
   detail: (id: string) => [...exitClearanceKeys.all, 'detail', id] as const,
 };
 
-const BASE = '/hr/exit-clearances';
-
 // ---------------------------------------------------------------------------
 // Hooks
 // ---------------------------------------------------------------------------
@@ -104,14 +102,14 @@ export function useExitClearances(filters?: {
 
   return useQuery({
     queryKey: exitClearanceKeys.list(filters ?? {}),
-    queryFn: () => get<ExitClearance[]>(`${BASE}${qs ? `?${qs}` : ''}`),
+    queryFn: () => get<ExitClearance[]>(`${endpoints.exitClearances.list}${qs ? `?${qs}` : ''}`),
   });
 }
 
 export function useExitClearance(id: string | undefined) {
   return useQuery({
     queryKey: exitClearanceKeys.detail(id ?? ''),
-    queryFn: () => get<ExitClearance>(`${BASE}/${id}`),
+    queryFn: () => get<ExitClearance>(endpoints.exitClearances.get(id!)),
     enabled: Boolean(id),
   });
 }
@@ -120,7 +118,7 @@ export function useCreateExitClearance() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: CreateExitClearancePayload) =>
-      post<ExitClearance>(BASE, data),
+      post<ExitClearance>(endpoints.exitClearances.create, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: exitClearanceKeys.all });
     },
@@ -131,7 +129,7 @@ export function useUpdateExitClearance() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: UpdateExitClearancePayload }) =>
-      put<ExitClearance>(`${BASE}/${id}`, data),
+      put<ExitClearance>(endpoints.exitClearances.update(id), data),
     onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: exitClearanceKeys.all });
       queryClient.invalidateQueries({
@@ -145,7 +143,7 @@ export function useSettleExitClearance() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: SettlePayload }) =>
-      post<ExitClearance>(`${BASE}/${id}/settle`, data),
+      post<ExitClearance>(endpoints.exitClearances.settle(id), data),
     onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: exitClearanceKeys.all });
       queryClient.invalidateQueries({
@@ -158,7 +156,7 @@ export function useSettleExitClearance() {
 export function useDeleteExitClearance() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => del<{ message: string }>(`${BASE}/${id}`),
+    mutationFn: (id: string) => del<{ message: string }>(endpoints.exitClearances.delete(id)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: exitClearanceKeys.all });
     },

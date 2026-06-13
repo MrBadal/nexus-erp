@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { get, post, del } from '@/lib/api';
+import { get, post, del, endpoints } from '@/lib/api';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -71,7 +71,7 @@ export function useRegularizations(filters?: {
       if (filters?.employeeId) params.set('employeeId', filters.employeeId);
       const qs = params.toString();
       return get<AttendanceRegularization[]>(
-        `/hr/attendance-regularizations${qs ? `?${qs}` : ''}`,
+        `${endpoints.attendanceRegularizations.list}${qs ? `?${qs}` : ''}`,
       );
     },
   });
@@ -82,7 +82,7 @@ export function useApproveRegularization() {
   return useMutation({
     mutationFn: ({ id, reviewNotes }: { id: string; reviewNotes?: string }) =>
       post<AttendanceRegularization>(
-        `/hr/attendance-regularizations/${id}/approve`,
+        endpoints.attendanceRegularizations.approve(id),
         { reviewNotes },
       ),
     onSuccess: () => {
@@ -96,7 +96,7 @@ export function useRejectRegularization() {
   return useMutation({
     mutationFn: ({ id, reviewNotes }: { id: string; reviewNotes?: string }) =>
       post<AttendanceRegularization>(
-        `/hr/attendance-regularizations/${id}/reject`,
+        endpoints.attendanceRegularizations.reject(id),
         { reviewNotes },
       ),
     onSuccess: () => {
@@ -109,7 +109,7 @@ export function useDeleteRegularization() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) =>
-      del<{ message: string }>(`/hr/attendance-regularizations/${id}`),
+      del<{ message: string }>(endpoints.attendanceRegularizations.delete(id)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: regularizationKeys.all });
     },
@@ -124,7 +124,7 @@ export function useMyRegularizations() {
   return useQuery({
     queryKey: regularizationKeys.mine(),
     queryFn: () =>
-      get<AttendanceRegularization[]>('/ess/attendance/regularizations'),
+      get<AttendanceRegularization[]>(endpoints.attendanceRegularizations.essList),
   });
 }
 
@@ -132,7 +132,7 @@ export function useRequestRegularization() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: CreateRegularizationPayload) =>
-      post<AttendanceRegularization>('/ess/attendance/regularizations', data),
+      post<AttendanceRegularization>(endpoints.attendanceRegularizations.essCreate, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: regularizationKeys.mine() });
     },

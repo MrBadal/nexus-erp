@@ -2,7 +2,7 @@
 
 import axios from 'axios';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { get, post, del, buildQueryString } from '@/lib/api';
+import { get, post, del, buildQueryString, endpoints } from '@/lib/api';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -59,9 +59,6 @@ interface ListParams {
 // Endpoint paths (kept local because endpoints.ts is not in this sandbox)
 // ---------------------------------------------------------------------------
 
-const HR_BASE = '/hr/announcements';
-const ESS_BASE = '/ess/announcements';
-
 // ---------------------------------------------------------------------------
 // Query keys
 // ---------------------------------------------------------------------------
@@ -89,7 +86,7 @@ export function useAnnouncements(params?: ListParams) {
             params as Record<string, string | number | boolean | undefined | null>,
           )
         : '';
-      return get<Announcement[]>(`${HR_BASE}${qs}`);
+      return get<Announcement[]>(`${endpoints.announcements.list}${qs}`);
     },
   });
 }
@@ -97,7 +94,7 @@ export function useAnnouncements(params?: ListParams) {
 export function useAnnouncement(id: string) {
   return useQuery({
     queryKey: announcementKeys.detail(id),
-    queryFn: async () => get<Announcement>(`${HR_BASE}/${id}`),
+    queryFn: async () => get<Announcement>(endpoints.announcements.get(id)),
     enabled: !!id,
   });
 }
@@ -106,7 +103,7 @@ export function useCreateAnnouncement() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: AnnouncementCreateInput) =>
-      post<Announcement>(HR_BASE, data),
+      post<Announcement>(endpoints.announcements.create, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: announcementKeys.all });
     },
@@ -136,7 +133,7 @@ export function useUpdateAnnouncement() {
           }
         }
       }
-      const response = await axios.patch(`${baseURL}${HR_BASE}/${id}`, data, {
+      const response = await axios.patch(`${baseURL}${endpoints.announcements.update(id)}`, data, {
         headers,
       });
       const body = response.data;
@@ -155,7 +152,7 @@ export function usePublishAnnouncement() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) =>
-      post<Announcement>(`${HR_BASE}/${id}/publish`),
+      post<Announcement>(endpoints.announcements.publish(id)),
     onSuccess: (_, id) => {
       queryClient.invalidateQueries({ queryKey: announcementKeys.detail(id) });
       queryClient.invalidateQueries({ queryKey: announcementKeys.lists() });
@@ -167,7 +164,7 @@ export function useDeleteAnnouncement() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      await del(`${HR_BASE}/${id}`);
+      await del(endpoints.announcements.delete(id));
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: announcementKeys.all });
@@ -182,14 +179,14 @@ export function useDeleteAnnouncement() {
 export function useAnnouncementFeed() {
   return useQuery({
     queryKey: announcementKeys.feed(),
-    queryFn: async () => get<Announcement[]>(ESS_BASE),
+    queryFn: async () => get<Announcement[]>(endpoints.announcements.essList),
   });
 }
 
 export function useAnnouncementUnreadCount() {
   return useQuery({
     queryKey: announcementKeys.unread(),
-    queryFn: async () => get<{ count: number }>(`${ESS_BASE}/unread-count`),
+    queryFn: async () => get<{ count: number }>(endpoints.announcements.essUnreadCount),
   });
 }
 
@@ -197,7 +194,7 @@ export function useMarkAnnouncementRead() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) =>
-      post<{ success: boolean }>(`${ESS_BASE}/${id}/read`),
+      post<{ success: boolean }>(endpoints.announcements.essRead(id)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: announcementKeys.feed() });
       queryClient.invalidateQueries({ queryKey: announcementKeys.unread() });

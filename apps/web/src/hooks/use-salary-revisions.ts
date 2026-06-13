@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { get, post, put, del } from '@/lib/api';
+import { get, post, put, del, endpoints } from '@/lib/api';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -56,8 +56,8 @@ export function useSalaryRevisions(employeeId?: string) {
     queryFn: () =>
       get<SalaryRevision[]>(
         employeeId
-          ? `/hr/salary-revisions?employeeId=${employeeId}`
-          : '/hr/salary-revisions',
+          ? endpoints.salaryRevisions.byEmployee(employeeId)
+          : endpoints.salaryRevisions.list,
       ),
   });
 }
@@ -65,7 +65,7 @@ export function useSalaryRevisions(employeeId?: string) {
 export function useSalaryRevision(id: string | undefined) {
   return useQuery({
     queryKey: salaryRevisionKeys.detail(id ?? ''),
-    queryFn: () => get<SalaryRevision>(`/hr/salary-revisions/${id}`),
+    queryFn: () => get<SalaryRevision>(endpoints.salaryRevisions.get(id!)),
     enabled: Boolean(id),
   });
 }
@@ -74,7 +74,7 @@ export function useCreateSalaryRevision() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: CreateSalaryRevisionPayload) =>
-      post<SalaryRevision>('/hr/salary-revisions', data),
+      post<SalaryRevision>(endpoints.salaryRevisions.create, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: salaryRevisionKeys.all });
     },
@@ -90,7 +90,7 @@ export function useUpdateSalaryRevision() {
     }: {
       id: string;
       data: UpdateSalaryRevisionPayload;
-    }) => put<SalaryRevision>(`/hr/salary-revisions/${id}`, data),
+    }) => put<SalaryRevision>(endpoints.salaryRevisions.update(id), data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: salaryRevisionKeys.all });
     },
@@ -101,7 +101,7 @@ export function useDeleteSalaryRevision() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) =>
-      del<{ success: true }>(`/hr/salary-revisions/${id}`),
+      del<{ success: true }>(endpoints.salaryRevisions.delete(id)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: salaryRevisionKeys.all });
     },

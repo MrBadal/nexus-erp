@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { get, post, put, del, buildQueryString } from '@/lib/api';
+import { get, post, put, del, buildQueryString, endpoints as registry } from '@/lib/api';
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -83,43 +83,8 @@ export interface CycleReport {
   }>;
 }
 
-// ─── Endpoints ───────────────────────────────────────────
-
-const HR = '/hr/performance';
-const ESS = '/ess/performance';
-
-const endpoints = {
-  cycles: {
-    list: `${HR}/cycles`,
-    get: (id: string) => `${HR}/cycles/${id}`,
-    create: `${HR}/cycles`,
-    update: (id: string) => `${HR}/cycles/${id}`,
-    delete: (id: string) => `${HR}/cycles/${id}`,
-    report: (id: string) => `${HR}/cycles/${id}/report`,
-    reviews: (id: string) => `${HR}/cycles/${id}/reviews`,
-  },
-  templates: {
-    list: `${HR}/templates`,
-    get: (id: string) => `${HR}/templates/${id}`,
-    create: `${HR}/templates`,
-    update: (id: string) => `${HR}/templates/${id}`,
-    delete: (id: string) => `${HR}/templates/${id}`,
-  },
-  hrGoals: {
-    list: `${HR}/goals`,
-    managerComment: (id: string) => `${HR}/goals/${id}/manager-comment`,
-  },
-  hrReviews: {
-    submit: `${HR}/reviews`,
-  },
-  ess: {
-    activeCycle: `${ESS}/cycles/active`,
-    goals: `${ESS}/goals`,
-    goalDetail: (id: string) => `${ESS}/goals/${id}`,
-    myReviews: `${ESS}/reviews/me`,
-    submitSelfReview: `${ESS}/reviews`,
-  },
-};
+// ─── Endpoints (from the central registry) ──────────────
+const endpoints = registry.performance;
 
 // ─── Cycles ──────────────────────────────────────────────
 
