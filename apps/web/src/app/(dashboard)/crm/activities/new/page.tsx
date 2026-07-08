@@ -15,16 +15,29 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useCreateActivity } from '@/hooks/use-crm';
+import {
+  useCreateActivity,
+  useContacts,
+  useDeals,
+  type Contact,
+  type Deal,
+} from '@/hooks/use-crm';
+import { apiErrorMessage } from '@/lib/api';
+
+const NONE = 'none';
 
 export default function NewActivityPage() {
   const router = useRouter();
   const createActivity = useCreateActivity();
+  const { data: contactsData } = useContacts();
+  const { data: dealsData } = useDeals();
+  const contacts = (contactsData as Contact[] | undefined) ?? [];
+  const deals = (dealsData as Deal[] | undefined) ?? [];
 
   const [type, setType] = useState<string>('call');
   const [subject, setSubject] = useState('');
-  const [contactName, setContactName] = useState('');
-  const [dealName, setDealName] = useState('');
+  const [contactId, setContactId] = useState<string>(NONE);
+  const [dealId, setDealId] = useState<string>(NONE);
   const [dueDate, setDueDate] = useState(new Date().toISOString().split('T')[0]);
   const [priority, setPriority] = useState('medium');
   const [notes, setNotes] = useState('');
@@ -36,8 +49,8 @@ export default function NewActivityPage() {
       {
         type,
         subject,
-        contact: contactName || undefined,
-        deal: dealName || undefined,
+        contactId: contactId !== NONE ? contactId : undefined,
+        dealId: dealId !== NONE ? dealId : undefined,
         dueDate,
         priority,
         status: 'pending',
@@ -45,7 +58,7 @@ export default function NewActivityPage() {
       },
       {
         onSuccess: () => { toast.success('Activity created'); router.push('/crm/activities'); },
-        onError: (error: Error) => { toast.error(error.message || 'Failed to create activity'); },
+        onError: (error: unknown) => { toast.error(apiErrorMessage(error, 'Failed to create activity')); },
       },
     );
   };
@@ -81,10 +94,30 @@ export default function NewActivityPage() {
             <Input placeholder="Activity subject" value={subject} onChange={(e) => setSubject(e.target.value)} />
           </FormField>
           <FormField label="Contact">
-            <Input placeholder="Related contact" value={contactName} onChange={(e) => setContactName(e.target.value)} />
+            <Select value={contactId} onValueChange={setContactId}>
+              <SelectTrigger><SelectValue placeholder="Select a contact" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE}>None</SelectItem>
+                {contacts.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name}{c.company ? ` · ${c.company}` : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </FormField>
           <FormField label="Deal">
-            <Input placeholder="Related deal" value={dealName} onChange={(e) => setDealName(e.target.value)} />
+            <Select value={dealId} onValueChange={setDealId}>
+              <SelectTrigger><SelectValue placeholder="Select a deal" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE}>None</SelectItem>
+                {deals.map((d) => (
+                  <SelectItem key={d.id} value={d.id}>
+                    {d.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </FormField>
           <FormField label="Due Date" required>
             <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />

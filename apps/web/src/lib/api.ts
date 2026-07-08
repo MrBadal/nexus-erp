@@ -690,6 +690,11 @@ export const endpoints = {
     update: (id: string) => `/crm/leads/${id}`,
     convert: (id: string) => `/crm/leads/${id}/convert`,
     delete: (id: string) => `/crm/leads/${id}`,
+    queueCounts: '/crm/leads/queue-counts',
+    activities: (id: string) => `/crm/leads/${id}/activities`,
+    logCall: (id: string) => `/crm/leads/${id}/log-call`,
+    assign: (id: string) => `/crm/leads/${id}/assign`,
+    assignToMe: (id: string) => `/crm/leads/${id}/assign-to-me`,
   },
   activities: {
     list: '/crm/activities',

@@ -1,8 +1,8 @@
 'use client';
 
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createCrudHooks, createStatusActionHook } from './create-crud-hooks';
-import { post, endpoints } from '@/lib/api';
+import { get, post, endpoints, buildQueryString } from '@/lib/api';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -192,13 +192,54 @@ export interface Lead {
   city: string;
   state: string;
   country: string;
-  assignedTo: string;
+  assignedTo: string | null;
+  ownerName?: string | null;
+  priority: 'low' | 'medium' | 'high';
+  nextFollowUpAt: string | null;
+  lastDisposition: Disposition | null;
+  callAttempts: number;
+  lostReason: string | null;
   convertedContactId: string;
   convertedDealId: string;
   convertedAt: string;
   lastContactedAt: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export type Disposition =
+  | 'connected' | 'no_answer' | 'busy' | 'switched_off' | 'wrong_number'
+  | 'callback' | 'interested' | 'not_interested' | 'do_not_call' | 'converted';
+
+export interface LeadActivity {
+  id: string;
+  type: string;
+  subject: string;
+  description: string | null;
+  disposition: Disposition | null;
+  direction: 'inbound' | 'outbound' | null;
+  durationMinutes: number | null;
+  status: string;
+  completedAt: string | null;
+  dueDate: string | null;
+  createdAt: string;
+  byName: string | null;
+}
+
+export interface LogCallInput {
+  disposition: Disposition;
+  notes?: string;
+  durationMinutes?: number;
+  direction?: 'inbound' | 'outbound';
+  nextFollowUpAt?: string;
+  status?: string;
+}
+
+export interface QueueCounts {
+  dueToday: number;
+  overdue: number;
+  newUnassigned: number;
+  mine: number;
 }
 
 export interface ConvertLeadInput {
@@ -240,5 +281,75 @@ export function useConvertLead() {
       queryClient.invalidateQueries({ queryKey: ['contacts'] });
       queryClient.invalidateQueries({ queryKey: ['deals'] });
     },
+  });
+}
+
+// ─── Telecalling: work queue, call logging, assignment ──────────────
+
+export interface LeadQueueParams {
+  status?: string;
+  source?: string;
+  priority?: string;
+  search?: string;
+  mine?: boolean;
+  assignedTo?: string;
+  followUpDue?: 'overdue' | 'today' | 'week';
+  sort?: 'recent' | 'followup';
+  limit?: number;
+  offset?: number;
+}
+
+/** Owner-scoped lead list with telecaller work-queue filters. */
+export function useLeadQueue(params?: LeadQueueParams) {
+  return useQuery({
+    queryKey: ['leads', 'queue', params],
+    queryFn: () =>
+      get<Lead[]>(
+        `${endpoints.leads.list}${buildQueryString((params ?? {}) as Record<string, string | number | boolean | undefined | null>)}`,
+      ),
+  });
+}
+
+export function useLeadQueueCounts() {
+  return useQuery({
+    queryKey: ['leads', 'queue-counts'],
+    queryFn: () => get<QueueCounts>(endpoints.leads.queueCounts),
+  });
+}
+
+export function useLeadActivities(id: string | undefined) {
+  return useQuery({
+    queryKey: ['leads', 'activities', id],
+    queryFn: () => get<LeadActivity[]>(endpoints.leads.activities(id!)),
+    enabled: !!id,
+  });
+}
+
+export function useLogCall() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: LogCallInput & { id: string }) =>
+      post<Lead>(endpoints.leads.logCall(id), body),
+    onSuccess: (_data, { id }) => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      queryClient.invalidateQueries({ queryKey: ['leads', 'activities', id] });
+    },
+  });
+}
+
+export function useAssignLeadToMe() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => post<Lead>(endpoints.leads.assignToMe(id)),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['leads'] }),
+  });
+}
+
+export function useAssignLead() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, assignedTo }: { id: string; assignedTo: string | null }) =>
+      post<Lead>(endpoints.leads.assign(id), { assignedTo }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['leads'] }),
   });
 }

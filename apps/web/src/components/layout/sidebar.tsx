@@ -263,7 +263,8 @@ const navigation: NavItem[] = [
     icon: Handshake,
     requiredPrefix: ['crm:'],
     children: [
-      { title: "Leads", href: "/crm/leads", icon: Phone },
+      { title: "My Work Queue", href: "/crm/work-queue", icon: Phone },
+      { title: "Leads", href: "/crm/leads", icon: Target },
       { title: "Contacts", href: "/crm/contacts", icon: Users },
       { title: "Deals", href: "/crm/deals", icon: Target },
       { title: "Activities", href: "/crm/activities", icon: Activity },

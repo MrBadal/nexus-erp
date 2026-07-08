@@ -67,6 +67,24 @@ export const activityPriorityEnum = pgEnum('activity_priority', [
   'high',
 ]);
 
+// ─── Telecalling ────────────────────────────────────────
+export const callDispositionEnum = pgEnum('call_disposition', [
+  'connected',
+  'no_answer',
+  'busy',
+  'switched_off',
+  'wrong_number',
+  'callback',
+  'interested',
+  'not_interested',
+  'do_not_call',
+  'converted',
+]);
+
+export const callDirectionEnum = pgEnum('call_direction', ['inbound', 'outbound']);
+
+export const leadPriorityEnum = pgEnum('lead_priority', ['low', 'medium', 'high']);
+
 export const campaignTypeEnum = pgEnum('campaign_type', [
   'email',
   'social',
@@ -193,6 +211,11 @@ export const activities = pgTable('activities', {
   description: text('description'),
   contactId: uuid('contact_id').references(() => contacts.id, { onDelete: 'set null' }),
   dealId: uuid('deal_id').references(() => deals.id, { onDelete: 'set null' }),
+  // Telecalling: an activity (esp. a call) can be logged directly against a lead.
+  leadId: uuid('lead_id').references(() => leads.id, { onDelete: 'cascade' }),
+  disposition: callDispositionEnum('disposition'),
+  direction: callDirectionEnum('direction'),
+  durationMinutes: integer('duration_minutes'),
   assignedTo: uuid('assigned_to').references(() => users.id, { onDelete: 'set null' }),
   dueDate: timestamp('due_date', { withTimezone: true }),
   completedAt: timestamp('completed_at', { withTimezone: true }),
@@ -353,6 +376,12 @@ export const leads = pgTable('leads', {
   state: varchar('state', { length: 100 }),
   country: varchar('country', { length: 100 }),
   assignedTo: uuid('assigned_to').references(() => users.id, { onDelete: 'set null' }),
+  // Telecalling workflow
+  priority: leadPriorityEnum('priority').default('medium').notNull(),
+  nextFollowUpAt: timestamp('next_follow_up_at', { withTimezone: true }),
+  lastDisposition: callDispositionEnum('last_disposition'),
+  callAttempts: integer('call_attempts').default(0).notNull(),
+  lostReason: text('lost_reason'),
   convertedContactId: uuid('converted_contact_id'),
   convertedDealId: uuid('converted_deal_id'),
   convertedAt: timestamp('converted_at', { withTimezone: true }),

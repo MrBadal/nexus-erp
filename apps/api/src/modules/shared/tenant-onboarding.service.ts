@@ -305,7 +305,25 @@ export class TenantOnboardingService {
         hierarchyLevel: 5,
         permissions: [...ROLE_PERMISSIONS.employee],
       },
+      {
+        tenantId,
+        name: 'Sales Manager',
+        slug: 'sales_manager',
+        description: 'CRM — sees all leads, assigns to reps, manages the pipeline',
+        isSystem: true,
+        hierarchyLevel: 40,
+        permissions: [...ROLE_PERMISSIONS.sales_manager],
+      },
+      {
+        tenantId,
+        name: 'Telecaller',
+        slug: 'telecaller',
+        description: 'Inside sales — works assigned + unassigned leads, logs calls, schedules follow-ups',
+        isSystem: true,
+        hierarchyLevel: 20,
+        permissions: [...ROLE_PERMISSIONS.telecaller],
+      },
     ]);
-    this.logger.log('  → Accountant, Viewer, HR Manager, HR Executive, Employee roles created');
+    this.logger.log('  → Accountant, Viewer, HR Manager, HR Executive, Employee, Sales Manager, Telecaller roles created');
   }
 }

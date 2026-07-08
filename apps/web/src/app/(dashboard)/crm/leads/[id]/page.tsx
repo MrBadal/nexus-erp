@@ -3,9 +3,44 @@
 import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, UserPlus, Target, Phone, Mail, Building2, Briefcase, MapPin } from 'lucide-react';
-import { useLead, useUpdateLead, useConvertLead, useDeleteLead, type Lead } from '@/hooks/use-crm';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { Card } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  ArrowLeft,
+  UserPlus,
+  Target,
+  Phone,
+  Mail,
+  Building2,
+  Briefcase,
+  MapPin,
+  PhoneCall,
+  Clock,
+} from 'lucide-react';
+import {
+  useLead,
+  useUpdateLead,
+  useConvertLead,
+  useDeleteLead,
+  useLogCall,
+  useAssignLeadToMe,
+  useLeadActivities,
+  type Lead,
+  type Disposition,
+} from '@/hooks/use-crm';
+import { apiErrorMessage } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
 
 const statusColors: Record<string, string> = {
@@ -17,6 +52,51 @@ const statusColors: Record<string, string> = {
   lost: 'bg-gray-100 text-gray-800',
 };
 
+const priorityColors: Record<string, string> = {
+  low: 'bg-gray-100 text-gray-700',
+  medium: 'bg-amber-100 text-amber-800',
+  high: 'bg-red-100 text-red-800',
+};
+
+const dispositionLabels: Record<Disposition, string> = {
+  connected: 'Connected',
+  no_answer: 'No answer',
+  busy: 'Busy',
+  switched_off: 'Switched off',
+  wrong_number: 'Wrong number',
+  callback: 'Callback scheduled',
+  interested: 'Interested',
+  not_interested: 'Not interested',
+  do_not_call: 'Do not call',
+  converted: 'Converted',
+};
+
+const dispositionColors: Record<Disposition, string> = {
+  connected: 'bg-blue-100 text-blue-800',
+  interested: 'bg-green-100 text-green-800',
+  callback: 'bg-amber-100 text-amber-800',
+  converted: 'bg-emerald-100 text-emerald-800',
+  not_interested: 'bg-orange-100 text-orange-800',
+  do_not_call: 'bg-red-100 text-red-800',
+  no_answer: 'bg-gray-100 text-gray-700',
+  busy: 'bg-gray-100 text-gray-700',
+  switched_off: 'bg-gray-100 text-gray-700',
+  wrong_number: 'bg-gray-100 text-gray-700',
+};
+
+const DISPOSITION_ORDER: Disposition[] = [
+  'connected',
+  'no_answer',
+  'busy',
+  'switched_off',
+  'wrong_number',
+  'callback',
+  'interested',
+  'not_interested',
+  'do_not_call',
+  'converted',
+];
+
 export default function LeadDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -25,6 +105,9 @@ export default function LeadDetailPage() {
   const updateLead = useUpdateLead();
   const convertLead = useConvertLead();
   const deleteLead = useDeleteLead();
+  const logCall = useLogCall();
+  const assignToMe = useAssignLeadToMe();
+  const { data: activities, isLoading: activitiesLoading } = useLeadActivities(id);
 
   const [showConvert, setShowConvert] = useState(false);
   const [convertForm, setConvertForm] = useState({
@@ -32,6 +115,13 @@ export default function LeadDetailPage() {
     dealTitle: '',
     dealValue: '',
   });
+
+  // Log Call form state
+  const [disposition, setDisposition] = useState<Disposition | ''>('');
+  const [direction, setDirection] = useState<'outbound' | 'inbound'>('outbound');
+  const [duration, setDuration] = useState('');
+  const [callNotes, setCallNotes] = useState('');
+  const [nextFollowUpAt, setNextFollowUpAt] = useState('');
 
   if (isLoading) {
     return (
@@ -74,6 +164,64 @@ export default function LeadDetailPage() {
     }
   };
 
+  const handleAssignToMe = async () => {
+    try {
+      await assignToMe.mutateAsync(id);
+      toast.success('Lead assigned to you');
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Failed to assign lead'));
+    }
+  };
+
+  const requiresFollowUp = disposition === 'callback';
+  const requiresNotes = disposition === 'not_interested' || disposition === 'do_not_call';
+
+  const handleLogCall = async () => {
+    if (!lead.phone) {
+      toast.error('Add a phone number first');
+      return;
+    }
+    if (!disposition) {
+      toast.error('Select a disposition');
+      return;
+    }
+    if (requiresFollowUp) {
+      if (!nextFollowUpAt) {
+        toast.error('A follow-up date/time is required for a callback');
+        return;
+      }
+      if (new Date(nextFollowUpAt).getTime() <= Date.now()) {
+        toast.error('The follow-up must be in the future');
+        return;
+      }
+    }
+    if (requiresNotes && !callNotes.trim()) {
+      toast.error('Notes are required for this disposition');
+      return;
+    }
+
+    try {
+      const updated = await logCall.mutateAsync({
+        id,
+        disposition,
+        notes: callNotes.trim() || undefined,
+        durationMinutes: duration ? Number(duration) : undefined,
+        direction,
+        nextFollowUpAt: nextFollowUpAt
+          ? new Date(nextFollowUpAt).toISOString()
+          : undefined,
+      });
+      toast.success(`Call logged — lead moved to ${updated?.status ?? 'updated'}`);
+      setDisposition('');
+      setDirection('outbound');
+      setDuration('');
+      setCallNotes('');
+      setNextFollowUpAt('');
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Failed to log call'));
+    }
+  };
+
   const isConverted = lead.status === 'converted';
 
   return (
@@ -97,9 +245,44 @@ export default function LeadDetailPage() {
         </div>
       </div>
 
+      {/* Header meta */}
+      <div className="grid grid-cols-2 gap-4 rounded-lg border bg-card p-4 sm:grid-cols-5">
+        <div>
+          <p className="text-xs text-muted-foreground">Owner</p>
+          <p className="mt-1 text-sm font-medium">{lead.ownerName || 'Unassigned'}</p>
+        </div>
+        <div>
+          <p className="text-xs text-muted-foreground">Priority</p>
+          <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium capitalize ${priorityColors[lead.priority] || priorityColors.low}`}>
+            {lead.priority}
+          </span>
+        </div>
+        <div>
+          <p className="text-xs text-muted-foreground">Next follow-up</p>
+          <p className="mt-1 text-sm font-medium">
+            {lead.nextFollowUpAt ? formatDate(lead.nextFollowUpAt) : '—'}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs text-muted-foreground">Call attempts</p>
+          <p className="mt-1 text-sm font-medium">{lead.callAttempts ?? 0}</p>
+        </div>
+        <div>
+          <p className="text-xs text-muted-foreground">Last disposition</p>
+          <p className="mt-1 text-sm font-medium">
+            {lead.lastDisposition ? dispositionLabels[lead.lastDisposition] : '—'}
+          </p>
+        </div>
+      </div>
+
       {/* Actions */}
       {!isConverted && (
         <div className="flex flex-wrap gap-2">
+          {lead.assignedTo === null && (
+            <Button size="sm" variant="outline" onClick={handleAssignToMe} disabled={assignToMe.isPending}>
+              <UserPlus className="mr-1 h-3.5 w-3.5" /> Assign to me
+            </Button>
+          )}
           {lead.status === 'new' && (
             <Button size="sm" variant="outline" onClick={() => handleStatusChange('contacted')}>
               Mark as Contacted
@@ -193,6 +376,99 @@ export default function LeadDetailPage() {
         </div>
       )}
 
+      {/* Log Call — primary telecaller action */}
+      {!isConverted && (
+        <Card className="p-6 space-y-4">
+          <div className="flex items-center gap-2">
+            <PhoneCall className="h-5 w-5 text-primary" />
+            <h2 className="text-lg font-semibold">Log Call</h2>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Logging a call auto-updates the lead status: interested → qualified,
+            not interested / do-not-call → lost, and a first call → contacted.
+          </p>
+
+          {!lead.phone ? (
+            <div className="rounded-md border border-dashed bg-muted/40 p-4 text-sm text-muted-foreground">
+              Add a phone number first before logging a call.
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <div className="space-y-1.5">
+                  <Label>Disposition</Label>
+                  <Select
+                    value={disposition || undefined}
+                    onValueChange={(v) => setDisposition(v as Disposition)}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Select outcome" /></SelectTrigger>
+                    <SelectContent>
+                      {DISPOSITION_ORDER.map((d) => (
+                        <SelectItem key={d} value={d}>{dispositionLabels[d]}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Direction</Label>
+                  <Select value={direction} onValueChange={(v) => setDirection(v as 'outbound' | 'inbound')}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="outbound">Outbound</SelectItem>
+                      <SelectItem value="inbound">Inbound</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Duration (minutes)</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    placeholder="0"
+                    value={duration}
+                    onChange={(e) => setDuration(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>
+                  Next follow-up
+                  {requiresFollowUp && <span className="ml-1 text-destructive">*required</span>}
+                </Label>
+                <Input
+                  type="datetime-local"
+                  value={nextFollowUpAt}
+                  onChange={(e) => setNextFollowUpAt(e.target.value)}
+                  className={requiresFollowUp ? 'border-destructive ring-1 ring-destructive' : ''}
+                />
+                {requiresFollowUp && (
+                  <p className="text-xs text-destructive">Schedule the callback in the future.</p>
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>
+                  Notes
+                  {requiresNotes && <span className="ml-1 text-destructive">*required</span>}
+                </Label>
+                <Textarea
+                  placeholder="Call notes..."
+                  rows={3}
+                  value={callNotes}
+                  onChange={(e) => setCallNotes(e.target.value)}
+                />
+              </div>
+
+              <Button onClick={handleLogCall} disabled={logCall.isPending}>
+                <PhoneCall className="mr-1 h-4 w-4" />
+                {logCall.isPending ? 'Logging...' : 'Log Call'}
+              </Button>
+            </>
+          )}
+        </Card>
+      )}
+
       {/* Details Grid */}
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         <div className="rounded-lg border bg-card p-6 space-y-4">
@@ -271,6 +547,61 @@ export default function LeadDetailPage() {
           <p className="text-sm text-muted-foreground whitespace-pre-wrap">{lead.notes}</p>
         </div>
       )}
+
+      {/* Call history */}
+      <Card className="p-6 space-y-4">
+        <div className="flex items-center gap-2">
+          <Clock className="h-5 w-5 text-muted-foreground" />
+          <h2 className="text-lg font-semibold">Call history</h2>
+        </div>
+
+        {activitiesLoading ? (
+          <div className="space-y-3">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="flex gap-3">
+                <Skeleton className="h-10 w-10 rounded-full" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-4 w-1/3" />
+                  <Skeleton className="h-3 w-2/3" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : !activities || activities.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No calls logged yet.</p>
+        ) : (
+          <ol className="space-y-4">
+            {activities.map((a) => (
+              <li key={a.id} className="flex gap-3 border-b pb-4 last:border-0 last:pb-0">
+                <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted">
+                  <PhoneCall className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <div className="flex-1 space-y-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {a.disposition && (
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${dispositionColors[a.disposition]}`}>
+                        {dispositionLabels[a.disposition]}
+                      </span>
+                    )}
+                    {a.direction && (
+                      <span className="text-xs capitalize text-muted-foreground">{a.direction}</span>
+                    )}
+                    {typeof a.durationMinutes === 'number' && (
+                      <span className="text-xs text-muted-foreground">{a.durationMinutes}m</span>
+                    )}
+                  </div>
+                  {a.description && (
+                    <p className="text-sm text-muted-foreground whitespace-pre-wrap">{a.description}</p>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    {a.byName || 'System'} · {formatDate(a.createdAt)}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        )}
+      </Card>
     </div>
   );
 }

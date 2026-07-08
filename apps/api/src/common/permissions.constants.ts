@@ -36,6 +36,19 @@ export const HR_PERMS = {
   MANAGE_SHIFTS: 'hr:manage_shifts',
 } as const;
 
+// ─── CRM / Sales ────────────────────────────────────────────────
+export const CRM_PERMS = {
+  READ: 'crm:read',
+  WRITE: 'crm:write',
+  DELETE: 'crm:delete',
+  /** See every lead in the tenant (managers), not just own + unassigned. */
+  READ_ALL: 'crm:read_all',
+  /** Assign/reassign leads to other users (managers). */
+  ASSIGN: 'crm:assign',
+  ACTIVITIES_READ: 'activities:read',
+  ACTIVITIES_WRITE: 'activities:write',
+} as const;
+
 // ─── Audit ──────────────────────────────────────────────────────
 export const AUDIT_PERMS = {
   READ: 'audit:read',
@@ -72,6 +85,24 @@ export const ROLE_PERMISSIONS = {
     HR_PERMS.APPROVE_LEAVE,
     HR_PERMS.APPROVE_EXPENSE,
     HR_PERMS.MANAGE_RECRUITMENT,
+  ],
+  // Inside-sales rep: works their own leads + the unassigned pool. Cannot see
+  // other reps' leads or reassign.
+  telecaller: [
+    CRM_PERMS.READ,
+    CRM_PERMS.WRITE,
+    CRM_PERMS.ACTIVITIES_READ,
+    CRM_PERMS.ACTIVITIES_WRITE,
+  ],
+  // Sales manager: full visibility + can assign/reassign and delete.
+  sales_manager: [
+    CRM_PERMS.READ,
+    CRM_PERMS.WRITE,
+    CRM_PERMS.DELETE,
+    CRM_PERMS.READ_ALL,
+    CRM_PERMS.ASSIGN,
+    CRM_PERMS.ACTIVITIES_READ,
+    CRM_PERMS.ACTIVITIES_WRITE,
   ],
 } as const;
 
