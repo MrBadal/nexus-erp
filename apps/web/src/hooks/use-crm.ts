@@ -353,3 +353,32 @@ export function useAssignLead() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['leads'] }),
   });
 }
+
+export interface ImportLeadRow {
+  name?: string;
+  phone?: string;
+  email?: string;
+  company?: string;
+  jobTitle?: string;
+  source?: string;
+  priority?: string;
+  notes?: string;
+  city?: string;
+  state?: string;
+}
+
+export interface ImportResult {
+  total: number;
+  created: number;
+  skipped: number;
+  errors: { row: number; name: string; reason: string }[];
+}
+
+export function useImportLeads() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { leads: ImportLeadRow[]; assignTo?: string | null | 'round_robin' }) =>
+      post<ImportResult>(endpoints.leads.import, body),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['leads'] }),
+  });
+}

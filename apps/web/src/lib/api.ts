@@ -695,6 +695,7 @@ export const endpoints = {
     logCall: (id: string) => `/crm/leads/${id}/log-call`,
     assign: (id: string) => `/crm/leads/${id}/assign`,
     assignToMe: (id: string) => `/crm/leads/${id}/assign-to-me`,
+    import: '/crm/leads/import',
   },
   activities: {
     list: '/crm/activities',

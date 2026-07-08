@@ -2,8 +2,9 @@
 
 import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { toast } from 'sonner';
-import { Phone, Search, UserPlus } from 'lucide-react';
+import { Phone, Search, UserPlus, PhoneCall, Upload } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -17,6 +18,7 @@ import {
   type Disposition,
 } from '@/hooks/use-crm';
 import { apiErrorMessage } from '@/lib/api';
+import { useAuthStore } from '@/stores/auth.store';
 
 type TabKey = 'today' | 'overdue' | 'unassigned' | 'mine';
 
@@ -95,6 +97,8 @@ export default function WorkQueuePage() {
 
   const { data: counts } = useLeadQueueCounts();
   const assignToMe = useAssignLeadToMe();
+  const roleSlug = useAuthStore((s) => s.user?.roleSlug);
+  const isManager = roleSlug === 'admin' || roleSlug === 'sales_manager';
 
   const queryParams = useMemo<LeadQueueParams>(
     () => ({ ...TAB_PARAMS[tab], search: search || undefined }),
@@ -127,9 +131,25 @@ export default function WorkQueuePage() {
 
   return (
     <div className="space-y-6 p-6">
-      <div>
-        <h1 className="text-2xl font-bold">My Work Queue</h1>
-        <p className="text-sm text-muted-foreground">Your daily calling list, prioritised.</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold">My Work Queue</h1>
+          <p className="text-sm text-muted-foreground">Your daily calling list, prioritised.</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Link href="/crm/call-mode">
+            <Button size="sm">
+              <PhoneCall className="mr-1.5 h-4 w-4" /> Call Mode
+            </Button>
+          </Link>
+          {isManager && (
+            <Link href="/crm/leads/import">
+              <Button size="sm" variant="outline">
+                <Upload className="mr-1.5 h-4 w-4" /> Import Leads
+              </Button>
+            </Link>
+          )}
+        </div>
       </div>
 
       {/* Tabs */}

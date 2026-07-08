@@ -18,6 +18,7 @@ import {
   UpdateLeadDto,
   ConvertLeadDto,
   LogCallDto,
+  ImportLeadsDto,
   Actor,
 } from './lead.service.js';
 import { JwtAuthGuard } from '../../../common/guards/auth.guard.js';
@@ -106,6 +107,18 @@ export class LeadController {
     @Param('id', UuidValidationPipe) id: string,
   ) {
     return this.service.getActivities(tenantId, id, toActor(user));
+  }
+
+  @Post('import')
+  @RequirePermissions('crm:write')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Bulk-import leads (dedupes by phone, optional assignment)' })
+  async importLeads(
+    @CurrentTenant() tenantId: string,
+    @CurrentUser() user: JwtPayload,
+    @Body() body: ImportLeadsDto,
+  ) {
+    return this.service.importLeads(tenantId, body, toActor(user));
   }
 
   @Post()

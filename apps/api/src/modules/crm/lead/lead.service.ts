@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { eq, and, isNull, desc, asc, or, ilike, inArray, sql, gte, lte } from 'drizzle-orm';
 import { DATABASE, DrizzleDB } from '../../../database/database.module.js';
-import { leads, contacts, deals, dealStages, activities, users } from '../../../database/schema/index.js';
+import { leads, contacts, deals, dealStages, activities, users, roles } from '../../../database/schema/index.js';
 import { NumberSeriesService } from '../../shared/number-series.service.js';
 
 type LeadSource = 'website' | 'referral' | 'social_media' | 'cold_call' | 'trade_show' | 'email_campaign' | 'advertisement' | 'other';
@@ -61,6 +61,25 @@ export interface ConvertLeadDto {
   createDeal?: boolean;
   dealTitle?: string;
   dealValue?: string;
+}
+
+export interface ImportLeadRow {
+  name?: string;
+  phone?: string;
+  email?: string;
+  company?: string;
+  jobTitle?: string;
+  source?: string;
+  priority?: string;
+  notes?: string;
+  city?: string;
+  state?: string;
+}
+
+export interface ImportLeadsDto {
+  leads: ImportLeadRow[];
+  /** userId to assign every row to, null/undefined = unassigned pool, or 'round_robin' to spread across telecallers. */
+  assignTo?: string | null | 'round_robin';
 }
 
 const TERMINAL: Disposition[] = ['not_interested', 'do_not_call'];
@@ -272,6 +291,99 @@ export class LeadService {
       .returning();
 
     return lead;
+  }
+
+  /**
+   * Bulk-import leads (admin/manager). Validates each row (name + phone
+   * required), skips duplicates by phone (last-10-digit match), and inserts the
+   * valid ones in one transaction. Returns a per-row summary so the UI can show
+   * exactly what imported / was skipped / failed.
+   */
+  async importLeads(tenantId: string, dto: ImportLeadsDto, actor: Actor) {
+    const rows = dto.leads ?? [];
+    if (rows.length === 0) throw new BadRequestException('No rows to import');
+    if (rows.length > 5000) throw new BadRequestException('Import is capped at 5000 rows per file');
+
+    const norm = (p?: string) => (p || '').replace(/\D/g, '').slice(-10);
+
+    // Resolve assignment target.
+    let fixedAssignee: string | null = null;
+    let roundRobin: string[] = [];
+    if (dto.assignTo === 'round_robin') {
+      const reps = await this.db
+        .select({ id: users.id })
+        .from(users)
+        .innerJoin(roles, eq(users.roleId, roles.id))
+        .where(and(eq(users.tenantId, tenantId), eq(roles.slug, 'telecaller'), isNull(users.deletedAt)));
+      roundRobin = reps.map((r) => r.id);
+      if (roundRobin.length === 0) fixedAssignee = null; // no reps → pool
+    } else if (dto.assignTo) {
+      if (dto.assignTo !== actor.userId && !actor.canAssign) {
+        throw new ForbiddenException('You cannot assign imported leads to other users');
+      }
+      fixedAssignee = dto.assignTo;
+    } else {
+      // Default: managers → pool, reps → self.
+      fixedAssignee = actor.canAssign ? null : actor.userId;
+    }
+
+    // Existing phones (for dedupe).
+    const existing = await this.db
+      .select({ phone: leads.phone })
+      .from(leads)
+      .where(and(eq(leads.tenantId, tenantId), isNull(leads.deletedAt)));
+    const seen = new Set(existing.map((e) => norm(e.phone ?? undefined)).filter(Boolean));
+
+    const errors: { row: number; name: string; reason: string }[] = [];
+    const toInsert: (typeof leads.$inferInsert)[] = [];
+    let rr = 0;
+
+    rows.forEach((r, i) => {
+      const name = (r.name || '').trim();
+      const phone = (r.phone || '').trim();
+      if (!name) { errors.push({ row: i + 1, name: name || '(blank)', reason: 'Name is required' }); return; }
+      if (!phone) { errors.push({ row: i + 1, name, reason: 'Phone is required' }); return; }
+      const key = norm(phone);
+      if (key.length < 8) { errors.push({ row: i + 1, name, reason: 'Phone looks invalid' }); return; }
+      if (seen.has(key)) { errors.push({ row: i + 1, name, reason: 'Duplicate phone — skipped' }); return; }
+      seen.add(key);
+
+      const assignedTo =
+        roundRobin.length > 0 ? roundRobin[rr++ % roundRobin.length] : fixedAssignee;
+
+      const validSources = ['website', 'referral', 'social_media', 'cold_call', 'trade_show', 'email_campaign', 'advertisement', 'other'];
+      const source = validSources.includes(r.source || '') ? (r.source as LeadSource) : 'other';
+      const validPriority = ['low', 'medium', 'high'];
+      const priority = validPriority.includes(r.priority || '') ? (r.priority as LeadPriority) : 'medium';
+
+      toInsert.push({
+        tenantId,
+        name,
+        phone,
+        email: r.email?.trim() || null,
+        company: r.company?.trim() || null,
+        jobTitle: r.jobTitle?.trim() || null,
+        source,
+        priority,
+        notes: r.notes?.trim() || null,
+        city: r.city?.trim() || null,
+        state: r.state?.trim() || null,
+        assignedTo,
+      });
+    });
+
+    let created = 0;
+    if (toInsert.length > 0) {
+      await this.db.transaction(async (tx) => {
+        // chunk to keep the statement size sane
+        for (let i = 0; i < toInsert.length; i += 500) {
+          await tx.insert(leads).values(toInsert.slice(i, i + 500));
+        }
+      });
+      created = toInsert.length;
+    }
+
+    return { total: rows.length, created, skipped: errors.length, errors: errors.slice(0, 200) };
   }
 
   async update(tenantId: string, id: string, dto: UpdateLeadDto, actor: Actor) {

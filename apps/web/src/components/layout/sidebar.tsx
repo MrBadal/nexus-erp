@@ -263,8 +263,10 @@ const navigation: NavItem[] = [
     icon: Handshake,
     requiredPrefix: ['crm:'],
     children: [
-      { title: "My Work Queue", href: "/crm/work-queue", icon: Phone },
+      { title: "Call Mode", href: "/crm/call-mode", icon: Phone },
+      { title: "My Work Queue", href: "/crm/work-queue", icon: ClipboardList },
       { title: "Leads", href: "/crm/leads", icon: Target },
+      { title: "Import Leads", href: "/crm/leads/import", icon: ArrowRightLeft },
       { title: "Contacts", href: "/crm/contacts", icon: Users },
       { title: "Deals", href: "/crm/deals", icon: Target },
       { title: "Activities", href: "/crm/activities", icon: Activity },
