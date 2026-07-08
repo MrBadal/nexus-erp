@@ -236,13 +236,17 @@ export class LeadService {
   // ─── Mutations ──────────────────────────────────────────
 
   async create(tenantId: string, dto: CreateLeadDto, actor: Actor) {
-    // Owner: managers may assign to anyone; otherwise the creator owns it.
-    let assignedTo: string | null = actor.userId;
+    // Owner rules: an explicit assignee wins (managers only, unless it's self);
+    // otherwise a manager's new lead goes to the unassigned/claimable pool while
+    // a rep auto-owns the lead they sourced.
+    let assignedTo: string | null;
     if (dto.assignedTo) {
       if (dto.assignedTo !== actor.userId && !actor.canAssign) {
         throw new ForbiddenException('You cannot assign leads to other users');
       }
       assignedTo = dto.assignedTo;
+    } else {
+      assignedTo = actor.canAssign ? null : actor.userId;
     }
 
     const [lead] = await this.db
