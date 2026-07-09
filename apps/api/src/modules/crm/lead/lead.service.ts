@@ -294,10 +294,11 @@ export class LeadService {
   }
 
   /**
-   * Bulk-import leads (admin/manager). Validates each row (name + phone
-   * required), skips duplicates by phone (last-10-digit match), and inserts the
-   * valid ones in one transaction. Returns a per-row summary so the UI can show
-   * exactly what imported / was skipped / failed.
+   * Bulk-import leads (admin/manager). Each row needs a name or company; phone
+   * is optional (registry-sourced leads often have none). Dedupes by phone
+   * (last-10-digit) when present, otherwise by a composite of company/name +
+   * district + state, so re-uploading the same directory won't create dupes.
+   * Inserts the valid rows in one transaction and returns a per-row summary.
    */
   async importLeads(tenantId: string, dto: ImportLeadsDto, actor: Actor) {
     const rows = dto.leads ?? [];
@@ -305,6 +306,17 @@ export class LeadService {
     if (rows.length > 5000) throw new BadRequestException('Import is capped at 5000 rows per file');
 
     const norm = (p?: string) => (p || '').replace(/\D/g, '').slice(-10);
+    const normText = (s?: string | null) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    // Identity-first dedupe: company/name + district + state (+ phone when present).
+    // Registry data (e.g. FPOs) often shares one facilitator's phone across many
+    // distinct orgs, so phone alone must NOT collapse them — the company differs.
+    const dedupeKey = (v: { phone?: string | null; company?: string | null; name?: string | null; city?: string | null; state?: string | null }) => {
+      const id = normText(v.company) || normText(v.name);
+      const ph = norm(v.phone ?? undefined);
+      const loc = `${normText(v.city)}|${normText(v.state)}`;
+      if (id) return `n:${id}|${loc}|${ph}`;
+      return ph.length >= 8 ? `p:${ph}` : `x:${loc}`;
+    };
 
     // Resolve assignment target.
     let fixedAssignee: string | null = null;
@@ -327,25 +339,27 @@ export class LeadService {
       fixedAssignee = actor.canAssign ? null : actor.userId;
     }
 
-    // Existing phones (for dedupe).
+    // Existing leads (for dedupe by phone, or composite when phone is absent).
     const existing = await this.db
-      .select({ phone: leads.phone })
+      .select({ phone: leads.phone, company: leads.company, name: leads.name, city: leads.city, state: leads.state })
       .from(leads)
       .where(and(eq(leads.tenantId, tenantId), isNull(leads.deletedAt)));
-    const seen = new Set(existing.map((e) => norm(e.phone ?? undefined)).filter(Boolean));
+    const seen = new Set(existing.map((e) => dedupeKey(e)));
 
     const errors: { row: number; name: string; reason: string }[] = [];
     const toInsert: (typeof leads.$inferInsert)[] = [];
     let rr = 0;
 
     rows.forEach((r, i) => {
-      const name = (r.name || '').trim();
+      const company = (r.company || '').trim();
+      // A lead needs *some* identity: prefer the contact name, fall back to company.
+      const name = (r.name || '').trim() || company;
       const phone = (r.phone || '').trim();
-      if (!name) { errors.push({ row: i + 1, name: name || '(blank)', reason: 'Name is required' }); return; }
-      if (!phone) { errors.push({ row: i + 1, name, reason: 'Phone is required' }); return; }
-      const key = norm(phone);
-      if (key.length < 8) { errors.push({ row: i + 1, name, reason: 'Phone looks invalid' }); return; }
-      if (seen.has(key)) { errors.push({ row: i + 1, name, reason: 'Duplicate phone — skipped' }); return; }
+      if (!name) { errors.push({ row: i + 1, name: '(blank)', reason: 'Name or company is required' }); return; }
+      const digits = norm(phone);
+      if (phone && digits.length < 8) { errors.push({ row: i + 1, name, reason: 'Phone looks invalid' }); return; }
+      const key = dedupeKey({ phone, company, name, city: r.city, state: r.state });
+      if (seen.has(key)) { errors.push({ row: i + 1, name, reason: 'Duplicate — skipped' }); return; }
       seen.add(key);
 
       const assignedTo =
@@ -359,9 +373,9 @@ export class LeadService {
       toInsert.push({
         tenantId,
         name,
-        phone,
+        phone: phone || null,
         email: r.email?.trim() || null,
-        company: r.company?.trim() || null,
+        company: company || null,
         jobTitle: r.jobTitle?.trim() || null,
         source,
         priority,
