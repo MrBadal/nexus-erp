@@ -10,6 +10,7 @@ import {
   boolean,
   date,
   index,
+  jsonb,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { tenants } from './tenants';
@@ -386,6 +387,10 @@ export const leads = pgTable('leads', {
   convertedDealId: uuid('converted_deal_id'),
   convertedAt: timestamp('converted_at', { withTimezone: true }),
   lastContactedAt: timestamp('last_contacted_at', { withTimezone: true }),
+  // Registry enrichment (MCA company master data)
+  registryCin: varchar('registry_cin', { length: 30 }),
+  registryStatus: varchar('registry_status', { length: 50 }),
+  registryVerifiedAt: timestamp('registry_verified_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
@@ -402,10 +407,58 @@ export const leadsRelations = relations(leads, ({ one }) => ({
   }),
 }));
 
+// ─── Lead Finder: discovered candidates (staging) ───────
+
+export const leadCandidateStatusEnum = pgEnum('lead_candidate_status', [
+  'new',
+  'imported',
+  'rejected',
+]);
+
+/**
+ * Staging table for leads discovered from external public sources (e.g. the
+ * MCA company-master-data registry) before an admin approves them into `leads`.
+ */
+export const leadCandidates = pgTable(
+  'lead_candidates',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    tenantId: uuid('tenant_id')
+      .references(() => tenants.id, { onDelete: 'cascade' })
+      .notNull(),
+    source: varchar('source', { length: 40 }).default('mca').notNull(),
+    name: varchar('name', { length: 255 }).notNull(), // company / org name
+    contactName: varchar('contact_name', { length: 255 }),
+    phone: varchar('phone', { length: 50 }),
+    email: varchar('email', { length: 255 }),
+    address: text('address'),
+    city: varchar('city', { length: 120 }),
+    state: varchar('state', { length: 120 }),
+    cin: varchar('cin', { length: 30 }),
+    companyStatus: varchar('company_status', { length: 50 }),
+    registrationDate: varchar('registration_date', { length: 20 }),
+    classification: varchar('classification', { length: 120 }),
+    status: leadCandidateStatusEnum('status').default('new').notNull(),
+    dedupeKey: varchar('dedupe_key', { length: 320 }).notNull(),
+    importedLeadId: uuid('imported_lead_id'),
+    raw: jsonb('raw'),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  },
+  (t) => ({
+    tenantDedupeIdx: index('lead_candidates_tenant_dedupe_idx').on(t.tenantId, t.dedupeKey),
+    tenantStatusIdx: index('lead_candidates_tenant_status_idx').on(t.tenantId, t.status),
+    tenantCinIdx: index('lead_candidates_tenant_cin_idx').on(t.tenantId, t.cin),
+  }),
+);
+
 // ─── Type Exports ───────────────────────────────────────
 
 export type Lead = typeof leads.$inferSelect;
 export type NewLead = typeof leads.$inferInsert;
+export type LeadCandidate = typeof leadCandidates.$inferSelect;
+export type NewLeadCandidate = typeof leadCandidates.$inferInsert;
 export type Contact = typeof contacts.$inferSelect;
 export type NewContact = typeof contacts.$inferInsert;
 export type ContactGroup = typeof contactGroups.$inferSelect;

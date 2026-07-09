@@ -382,3 +382,105 @@ export function useImportLeads() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['leads'] }),
   });
 }
+
+// ─── Lead Finder: registry discovery + enrichment ──────────────────
+
+export interface LeadCandidate {
+  id: string;
+  source: string;
+  name: string;
+  city: string | null;
+  state: string | null;
+  cin: string | null;
+  companyStatus: string | null;
+  registrationDate: string | null;
+  address: string | null;
+  status: 'new' | 'imported' | 'rejected';
+  createdAt: string;
+}
+
+export interface DiscoverResult {
+  state: string;
+  totalAgriInState: number;
+  scanned: number;
+  producersFound: number;
+  created: number;
+  alreadyHave: number;
+  nextOffset: number;
+  hasMore: boolean;
+}
+
+export interface CandidateCounts {
+  new: number;
+  imported: number;
+  rejected: number;
+}
+
+export function useFinderStates() {
+  return useQuery({
+    queryKey: ['lead-finder', 'states'],
+    queryFn: () => get<string[]>(endpoints.leadFinder.states),
+    staleTime: 60 * 60 * 1000,
+  });
+}
+
+export function useCandidates(params?: { status?: string; state?: string; search?: string }) {
+  return useQuery({
+    queryKey: ['lead-finder', 'candidates', params],
+    queryFn: () =>
+      get<LeadCandidate[]>(
+        `${endpoints.leadFinder.candidates}${buildQueryString((params ?? {}) as Record<string, string | undefined>)}`,
+      ),
+  });
+}
+
+export function useCandidateCounts() {
+  return useQuery({
+    queryKey: ['lead-finder', 'candidate-counts'],
+    queryFn: () => get<CandidateCounts>(endpoints.leadFinder.candidateCounts),
+  });
+}
+
+export function useDiscoverLeads() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { state: string; maxScan?: number; offset?: number }) =>
+      post<DiscoverResult>(endpoints.leadFinder.discover, body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['lead-finder'] });
+    },
+  });
+}
+
+export function useApproveCandidates() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { ids: string[]; assignTo?: string | null | 'round_robin' }) =>
+      post<{ approved: number; skipped: number }>(endpoints.leadFinder.approve, body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['lead-finder'] });
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+    },
+  });
+}
+
+export function useRejectCandidates() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { ids: string[] }) =>
+      post<{ rejected: number }>(endpoints.leadFinder.reject, body),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['lead-finder'] }),
+  });
+}
+
+export function useEnrichState() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { state: string }) =>
+      post<{ state: string; leadsInState: number; updated: number; struckOff: number }>(
+        endpoints.leadFinder.enrich,
+        body,
+      ),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['leads'] }),
+  });
+}

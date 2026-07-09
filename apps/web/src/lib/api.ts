@@ -697,6 +697,15 @@ export const endpoints = {
     assignToMe: (id: string) => `/crm/leads/${id}/assign-to-me`,
     import: '/crm/leads/import',
   },
+  leadFinder: {
+    states: '/crm/lead-finder/states',
+    candidates: '/crm/lead-finder/candidates',
+    candidateCounts: '/crm/lead-finder/candidate-counts',
+    discover: '/crm/lead-finder/discover',
+    approve: '/crm/lead-finder/approve',
+    reject: '/crm/lead-finder/reject',
+    enrich: '/crm/lead-finder/enrich',
+  },
   activities: {
     list: '/crm/activities',
     get: (id: string) => `/crm/activities/${id}`,

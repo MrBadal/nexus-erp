@@ -39,3 +39,9 @@ docker-data/
 # Documentation (keep in repo)
 !*.docx
 !*.pdf
+
+# secrets & local artifacts
+deploy/.env.prod
+.claude/
+.firecrawl/
+*.tsbuildinfo
