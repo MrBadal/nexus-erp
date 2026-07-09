@@ -95,12 +95,21 @@ export class LeadFinderService {
 
     // Existing leads in this state (dedupe target) + already-staged CINs.
     const existingLeads = await this.db
-      .select({ name: leads.name, company: leads.company, state: leads.state })
+      .select({
+        id: leads.id,
+        name: leads.name,
+        company: leads.company,
+        state: leads.state,
+        address: leads.address,
+        registryCin: leads.registryCin,
+      })
       .from(leads)
       .where(and(eq(leads.tenantId, tenantId), isNull(leads.deletedAt)));
-    const leadIdentity = new Set(
-      existingLeads.map((l) => this.identityKey(l.company || l.name, l.state || '')),
-    );
+    // key -> matching lead, so we can enrich it inline when the registry has it.
+    const leadByKey = new Map<string, (typeof existingLeads)[number]>();
+    for (const l of existingLeads) {
+      leadByKey.set(this.identityKey(l.company || l.name, l.state || ''), l);
+    }
 
     const staged = await this.db
       .select({ cin: leadCandidates.cin, dedupeKey: leadCandidates.dedupeKey })
@@ -113,7 +122,9 @@ export class LeadFinderService {
     let total = 0;
     let producersFound = 0;
     let alreadyHave = 0;
+    let enriched = 0;
     const toInsert: (typeof leadCandidates.$inferInsert)[] = [];
+    const enrichUpdates: { id: string; cin: string | null; status: string | null; address: string | null }[] = [];
     const seenThisRun = new Set<string>();
 
     while (scanned < maxScan) {
@@ -130,9 +141,21 @@ export class LeadFinderService {
         const key = this.identityKey(name, state);
         if (cin && stagedCins.has(cin)) continue;
         if (stagedKeys.has(key) || seenThisRun.has(cin || key)) continue;
-        if (leadIdentity.has(key)) {
+        const matchLead = leadByKey.get(key);
+        if (matchLead) {
           alreadyHave++;
-          continue; // already a lead — no point staging
+          // Enrich the existing lead inline if it isn't verified yet.
+          if (!matchLead.registryCin && cin) {
+            enrichUpdates.push({
+              id: matchLead.id,
+              cin,
+              status: rec.CompanyStatus || null,
+              address: matchLead.address || rec.Registered_Office_Address || null,
+            });
+            matchLead.registryCin = cin; // avoid double-updating within this run
+            enriched++;
+          }
+          continue; // already a lead — enrich, don't re-stage
         }
         seenThisRun.add(cin || key);
         const district = this.districtFromAddress(rec.Registered_Office_Address, state);
@@ -155,10 +178,22 @@ export class LeadFinderService {
       if (startOffset + scanned >= total) break;
     }
 
-    if (toInsert.length > 0) {
+    if (toInsert.length > 0 || enrichUpdates.length > 0) {
       await this.db.transaction(async (tx) => {
         for (let i = 0; i < toInsert.length; i += 200) {
           await tx.insert(leadCandidates).values(toInsert.slice(i, i + 200));
+        }
+        for (const u of enrichUpdates) {
+          await tx
+            .update(leads)
+            .set({
+              registryCin: u.cin,
+              registryStatus: u.status,
+              address: u.address,
+              registryVerifiedAt: new Date(),
+              updatedAt: new Date(),
+            })
+            .where(eq(leads.id, u.id));
         }
       });
     }
@@ -171,6 +206,7 @@ export class LeadFinderService {
       producersFound,
       created: toInsert.length,
       alreadyHave,
+      enriched,
       nextOffset,
       hasMore: nextOffset < total,
     };

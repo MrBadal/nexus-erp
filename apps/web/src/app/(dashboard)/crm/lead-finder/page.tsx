@@ -94,8 +94,8 @@ export default function LeadFinderPage() {
       setTab('new');
       toast.success(
         `${res.producersFound} producer companies found · ${res.created} new added${
-          res.alreadyHave ? ` · ${res.alreadyHave} already in your leads` : ''
-        }`,
+          res.alreadyHave ? ` · ${res.alreadyHave} already yours` : ''
+        }${res.enriched ? ` · ${res.enriched} enriched` : ''}`,
       );
     } catch (err) {
       toast.error(apiErrorMessage(err, 'Discovery failed'));

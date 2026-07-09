@@ -406,6 +406,7 @@ export interface DiscoverResult {
   producersFound: number;
   created: number;
   alreadyHave: number;
+  enriched: number;
   nextOffset: number;
   hasMore: boolean;
 }
