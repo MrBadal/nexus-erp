@@ -36,6 +36,13 @@
       "when": 1778001581438,
       "tag": "0004_complex_whizzer",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1786736193902,
+      "tag": "0005_drift_capture_since_0004",
+      "breakpoints": true
     }
   ]
 }

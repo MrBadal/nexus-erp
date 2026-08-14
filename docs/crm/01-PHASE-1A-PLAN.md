@@ -1,8 +1,9 @@
 # CRM Foundation — Phase 1a Plan
 
-**Status:** Draft for approval · **Date:** 2026-08-15
+**Status:** Approved with corrections (B1-B3, S1-S6) — this revision reflects them · **Date:** 2026-08-15
 **Depends on:** `docs/crm/00-DISCOVERY.md` (approved)
 **Rule:** No CRM feature work starts before 1a ships and is reviewed. 1a and 1b are reviewed independently.
+**Part A status:** executed and verified — see `docs/crm/02-SCHEMA-MIGRATION-DESIGN.md` Part A. Backup taken, scratch DB built and diffed against production two independent ways, exactly one real structural difference found (a constraint name), stamping mechanism determined empirically. The corrective migration is proposed there, not yet executed.
 
 Phase 1 from the original discovery doc was five projects wearing one name. Split per owner instruction:
 
@@ -21,8 +22,10 @@ Nothing in 1a touches CRM tables or CRM endpoints. It is pure platform foundatio
 | 1a.2 | Migration hygiene: capture the schema drift accumulated since `0004_complex_whizzer` via `drizzle-kit generate` as one reviewed migration; retire `deploy/*.sql` as a mechanism going forward |
 | 1a.3 | Response envelope + pagination convention decision (§2 below) + reference implementation on ONE existing list endpoint as a worked example |
 | 1a.4 | Tenant-scoped query helper — the transaction + connection-context wrapper that Phase 1b's RLS rollout will hang the `SET LOCAL` GUC on (built now, activated in 1b) |
-| 1a.5 | Benchmark harness (seed synthetic rows, measure p95) — see §3, moved here per owner instruction, not Phase 10 |
+| 1a.5 | Benchmark harness (seed synthetic rows, measure p95 across 3 separate pagination checkpoints, plus custom-field indexing strategy) — see §3, moved here per owner instruction, not Phase 10 |
 | 1a.6 | C6 characterization tests for the four GST implementations — see §4 |
+| 1a.7 | Non-unwrapping API client method (S5) — `apps/web/src/lib/api.ts` gets a method that returns the response body as-is, no `unwrap()`, so a CRM hook can read `total`/`totalPages` that `unwrap()` would otherwise discard |
+| 1a.8 | Tenant-scoped query helper built as a plain callable (`withTenantScope(tenantId, fn)`), not interceptor-shaped — see `02-SCHEMA-MIGRATION-DESIGN.md` Part B non-request-execution-paths design, so BullMQ workers and cron iterations in Phase 1b can call the same helper per-job/per-tenant-iteration instead of it being HTTP-request-only |
 
 ---
 
@@ -53,7 +56,9 @@ Nothing in 1a touches CRM tables or CRM endpoints. It is pure platform foundatio
 - **No compatibility shim is built**, because none is needed: `unwrap()` already *is* the compatibility shim, and it was written before this decision, by whoever built the original API client — CRM inherits it for free rather than building a second one.
 - The 1a.3 reference implementation: pick one existing CRM list endpoint (`GET /crm/leads`) and migrate it to the new envelope + `total` in Phase 1b as the pattern's first real usage — not in 1a itself (1a only lands the *convention*, agreed with the "no CRM feature work before 1a ships" rule: changing a CRM endpoint's response shape is CRM work).
 
-**Consequence for `shared-types`:** `PaginatedResponse<T>`'s `page`/`limit` fields stay as declared; new CRM controllers additionally accept `?limit=&offset=` (matching the platform's actual, not aspirational, convention per the CLAUDE.md fix) and compute `page`/`totalPages` from `limit`/`offset`/`total` server-side, so callers get both idioms without the platform having to pick one globally.
+**Consequence for `shared-types`:** `PaginatedResponse<T>`'s `page`/`limit` fields stay as declared; new CRM controllers additionally accept `?limit=&offset=` (matching the platform's actual, not aspirational, convention per the CLAUDE.md fix) and compute `page`/`totalPages` from `limit`/`offset`/`total` server-side, so callers get both idioms without the platform having to pick one globally. See §3 below (S4) for why offset-based paging is capped rather than unlimited, and why `total` specifically is opt-in.
+
+**Correction (S5):** `unwrap()` being "free" for `T`/`T[]` has a flip side — it also silently **discards** `total`/`totalPages` for anything that goes through `get<T>()`, since `unwrap()` only ever returns the inner `.data`. A CRM hook that needs the count for pagination UI cannot use the normal `get()` helper at all. **Task 1a.7** adds a second, non-unwrapping client method (e.g. `getEnvelope<T>(url, params?): Promise<PaginatedResponse<T>>`) that returns the response body as-is, so CRM's new list hooks read `total` directly instead of it vanishing at the client layer. This was missing from the original decision and is now an explicit Phase 1a deliverable, not an implicit assumption.
 
 ---
 
@@ -61,18 +66,25 @@ Nothing in 1a touches CRM tables or CRM endpoints. It is pure platform foundatio
 
 The original spec's budgets (1M rows/tenant, p95 <400ms, Kanban <1s at 2,000 deals, import ≥5,000 rows/min) are restated against a **named target instance**, not the free-tier e2-micro this environment currently runs on, and not vague. Named target for all Phase 1a+ benchmarking:
 
-> **GCP Cloud SQL for PostgreSQL, `db-custom-2-7680`** (2 vCPU, 7.5 GB RAM, SSD) — the smallest Cloud SQL tier that's a realistic "first paid tier" upgrade from the current e2-micro, and cheap enough (~$50-70/mo) to actually provision for benchmarking without it being a budget event. If actual production load ever needs more, that's a re-benchmark, not a redefinition of these numbers.
+> **GCP Cloud SQL for PostgreSQL, `db-custom-2-7680`** (2 vCPU, 7.5 GB RAM, SSD) — the smallest Cloud SQL tier that's a realistic "first paid tier" upgrade from the current e2-micro. **Cost correction:** provisioned **ephemeral, not standing** — created immediately before a benchmark run, destroyed immediately after, billed hourly (a run measured in tens of minutes costs a few dollars, not a monthly commitment). No standing instance exists or is proposed. If a future phase's needs genuinely argue for a standing instance, that's a separate ask with its own stated cost, made before creating it — not bundled into this plan.
 
 Budgets restated per 100k rows (linear checkpoints, not one distant 1M-row cliff) against that instance:
 
 | Metric | Per 100k rows (tenant-scoped) | Rationale |
 |---|---|---|
-| List view (indexed filter + sort) | p95 < 100ms | Scales to <400ms at 1M rows if the index strategy holds linearly — the harness proves whether it does |
+| List view — **page 1** (indexed filter + sort, cursor-less) | p95 < 100ms | The "normal" case — first load of a list |
+| List view — **deep page** (cursor/keyset position ~50k rows in) | p95 < 100ms, same target as page 1 | Proves keyset pagination doesn't degrade with depth the way `OFFSET 50000` does (see S4 below) — measured as its own checkpoint, not inferred from page 1 |
+| List view — **opt-in `?withTotal=true` count** | measured and reported separately, no fixed target yet (first baseline run establishes one) | Isolates the cost of the count query so it doesn't silently contaminate the page-1/deep-page numbers above — a caller who doesn't ask for `total` must never pay for it |
 | Record page + timeline | p95 < 150ms flat (not row-count-dependent — bounded by one record's related rows) | |
 | Kanban board | < 250ms per 100k open deals in a pipeline | Reaches spec's <1s only if bounded to realistic open-deal counts (2,000-ish), not all-time deals — harness must seed *open* vs *closed* separately |
 | Import throughput | ≥ 1,000 rows/min per 100k-row batch | Spec's 5,000/min restated conservatively; re-target up once real batch-insert tuning happens |
+| **NEW — custom-field filter/sort** (per-tenant-partial index vs composite-global index, S3) | measured at 100k/500k rows across N synthetic tenants × M flagged fields each, no fixed target yet | This is the empirical input to the open Part C indexing-strategy decision in `02-SCHEMA-MIGRATION-DESIGN.md` — not asserted in the design, decided here |
 
-**The harness ships in Phase 1a** (task 1a.5): a script that seeds N×100k synthetic tenant-scoped rows into a scratch schema/tenant, runs the above measurements, and fails CI-loud if a later phase regresses a checkpoint it previously passed. This means a Phase 3 (Deals) index mistake gets caught in Phase 3's own CI run, not discovered for the first time in a Phase 10 benchmark sweep — the entire point of moving it.
+**Pagination correction (S4):** "page-1-only measurement proves nothing" — a harness that only ever measures the first page would pass cleanly on an `OFFSET`-based design right up until real usage hits page 200 and the query silently gets an order of magnitude slower. New CRM list endpoints use **keyset/cursor pagination** as the primary mechanism (`?cursor=<opaque>&limit=`, encoding the last-seen sort key, not a raw row offset). Offset-based "jump to page N" is still supported for UI convenience but **capped** — beyond a fixed depth (e.g. 10 pages / 500 rows) the API returns 400 and requires cursor pagination instead of silently running an ever-slower `OFFSET` query. `total` is opt-in (`?withTotal=true`) rather than computed on every call, per §2's S5 correction — the client method that can actually see it is task 1a.7.
+
+**Transaction scoping, timeouts, and pool sizing (S1):** designed in `02-SCHEMA-MIGRATION-DESIGN.md` Part B — the tenant-scoped transaction built in task 1a.4/1a.8 must contain only DB calls (no GCS/email/webhook awaited inside an open scoped transaction), `statement_timeout`/`idle_in_transaction_session_timeout` are set at the role level, and the request-serving (20) vs worker (5) pool split is stated there against the same named benchmark instance.
+
+**The harness ships in Phase 1a** (task 1a.5): a script that seeds N×100k synthetic tenant-scoped rows into a scratch schema/tenant, runs all of the above measurements as separate checkpoints, and fails CI-loud if a later phase regresses a checkpoint it previously passed. This means a Phase 3 (Deals) index mistake gets caught in Phase 3's own CI run, not discovered for the first time in a Phase 10 benchmark sweep — the entire point of moving it.
 
 ---
 
@@ -92,6 +104,8 @@ Per instruction: **do not consolidate until told it's safe to; if the four imple
    If they disagree on anything else (rounding, discount-then-tax vs tax-then-discount ordering, inclusive vs exclusive handling) → **stop, present the divergence matrix, and do not pick a winner** — that's a business-logic decision for the owner, not an implementation detail.
 4. Extraction itself (once cleared) is **not** Phase 1a or 1b work — it lands just before whichever phase first needs correct CRM→Quotation tax math (Phase 6, per the original risk R6), so the characterization tests have had time to sit in CI and catch any incidental drift in the meantime.
 
+**S6 — production blast radius of the `taxAmount=0` bug, measured now rather than left for Phase 6:** queried production directly. **The `invoices` table currently has zero rows.** The bug affects no live data today. This doesn't change the sequencing above (characterization tests still pin all four implementations' behavior before any extraction, since new invoices will start flowing before Phase 6 necessarily lands), but it does mean there's no existing-data remediation decision pending — the owed report is: nothing to remediate yet, re-check this count immediately before Phase 6 in case that's changed by then.
+
 ---
 
 ## 5. Data Migration Policy (applies to every phase from here on)
@@ -108,7 +122,7 @@ Named ahead of time, because they're already visible from the discovery doc:
 
 | Change | Backfill | Rollback |
 |---|---|---|
-| `deals.stage` (enum) → `deals.stageId` (FK) becoming authoritative | Every existing `deals.stage` enum value maps to exactly one seeded `deal_stages` row per tenant (six enum values → six default stages, seeded per-tenant on the same migration). Backfill sets `stageId` from that map for every existing deal, in the same transaction as the stage-seed insert. | `stage` enum column is *not dropped* in this migration — it becomes a generated/denormalized read-through column synced from `stageId` for one full phase before any drop is even proposed. Rollback = stop writing `stageId`, `stage` is already still authoritative. |
+| `deals.stage` (enum) → `deals.stageId` (FK) becoming authoritative | Every existing `deals.stage` enum value maps to exactly one seeded `deal_stages` row per tenant (six enum values → six default stages, seeded per-tenant on the same migration). Backfill sets `stageId` from that map for every existing deal, in the same transaction as the stage-seed insert. Cross-tenant backfill of this kind is exactly the case `02-SCHEMA-MIGRATION-DESIGN.md` Part B's `nexus_migrator` (`BYPASSRLS`) role exists for. | `stage` enum column is *not dropped* in this migration. **Correction:** it cannot be a Postgres `GENERATED` column kept in sync with `stageId` — `GENERATED` expressions may only reference other columns in the *same row* via an immutable expression, not look up `deal_stages` in another table. Instead it's kept in sync by an `AFTER INSERT OR UPDATE` **trigger** that writes `stage` from `stageId` (or the reverse, whichever direction is authoritative during the transition) for one full phase before any drop is even proposed. Rollback = drop the trigger and stop writing `stageId`; `stage` is already still authoritative and untouched. |
 | Any change to `leads`/`activities` telecalling columns (disposition, `callAttempts`, `nextFollowUpAt`) | These are additive-only in every phase currently planned — no backfill needed beyond column defaults. If a future phase needs to *reinterpret* an existing value (e.g. splitting `lastDisposition` into a richer state machine), that gets its own named backfill plan at the time, not assumed here. | Additive columns roll back by dropping the column; no data loss since nothing existing was overwritten. |
 | Organizations dedupe/normalization pass (Q5, see 00-DISCOVERY.md) | Normalize `leads.company`/`contacts.company`/`deals` (via contact) free text into candidate `organizations` rows *before* any FK is added — output is a review queue, not an automatic write, given free-text company names are messy (case, legal suffixes, whitespace). `organizationId` FK columns are added **nullable** and only populated after the dedupe pass is reviewed. | Rollback = the FK columns are nullable and unpopulated; dropping them loses nothing since the source-of-truth (`company` text) is untouched throughout. |
 
@@ -116,12 +130,15 @@ Named ahead of time, because they're already visible from the discovery doc:
 
 ## 6. Exit Criteria for Phase 1a
 
+- [x] Migration hygiene, Part A: backup, scratch DB (2 ways), schema diff, stamping mechanism — executed, one real difference found and a corrective migration proposed (`02-SCHEMA-MIGRATION-DESIGN.md`), **awaiting go-ahead to apply the corrective migration and stamp production**
+- [x] R8 guard audit executed across all 95 controllers / 105 classes / 694 routes: 2 real gaps found (`notification.controller.ts`, `holiday-ess.controller.ts` — `PermissionsGuard` never wired), 5 apparent gaps confirmed legitimate by design. Reported, not yet patched (out of CRM-foundation scope unless you want it pulled in).
+- [x] S6: production `invoices` table is empty — zero rows affected by the `taxAmount=0` bug today.
 - [ ] vitest running in CI against a real (disposable) Postgres, wired into `turbo.json test`
-- [ ] Migration chain fully captures schema drift since `0004_complex_whizzer` — `apps/api/src/database/migrations` and `meta/_journal.json` back to being the single source of truth, `deploy/*.sql` no longer used for anything ORM-schema-related
-- [ ] Response envelope + pagination convention written up as a short ADR-style note (this document §2) + one worked reference diff
-- [ ] Tenant-scoped query helper exists and is unit-tested in isolation (RLS activation itself is Phase 1b — this just builds the transaction/GUC-setting plumbing Phase 1b will turn on)
-- [ ] Benchmark harness runs against the named Cloud SQL target and produces a baseline report at 100k/500k/1M synthetic rows
+- [ ] Response envelope + pagination convention written up (this document §2, revised with S4/S5) + one worked reference diff
+- [ ] Non-unwrapping API client method shipped (task 1a.7, S5)
+- [ ] Tenant-scoped query helper exists as a plain callable (task 1a.4/1a.8, B3-shaped) and is unit-tested in isolation (RLS activation itself is Phase 1b)
+- [ ] Benchmark harness runs against an **ephemeral** (create→run→destroy) Cloud SQL target and produces a baseline report at 100k/500k/1M synthetic rows across all checkpoints in §3, including the page-1/deep-page/count-query split and the custom-field indexing-strategy comparison
 - [ ] C6 characterization tests exist for all four GST implementations, with a divergence report (empty if they agree, populated and escalated to owner if not)
 - [ ] Reviewed and approved before Phase 1b (RLS, custom fields, BullMQ workers) starts
 
-No feature code beyond the above six deliverables. No CRM table is touched.
+No feature code beyond the above deliverables. No CRM table is touched.

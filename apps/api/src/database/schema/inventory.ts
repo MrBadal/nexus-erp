@@ -10,7 +10,7 @@ import {
   timestamp,
   index,
 } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 import { tenants } from './tenants';
 import { users } from './users';
 
@@ -158,6 +158,7 @@ export const items = pgTable('items', {
 }, (table) => [
   index('items_tenant_id_idx').on(table.tenantId),
   index('items_tenant_id_code_idx').on(table.tenantId, table.code),
+  index('idx_items_default_supplier').on(table.defaultSupplierId).where(sql`${table.defaultSupplierId} IS NOT NULL`),
 ]);
 
 export const itemsRelations = relations(items, ({ one, many }) => ({
@@ -192,6 +193,7 @@ export const itemWarehouses = pgTable('item_warehouses', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index('item_warehouses_tenant_id_item_id_idx').on(table.tenantId, table.itemId),
+  index('idx_item_warehouses_reorder').on(table.tenantId, table.itemId, table.quantity),
 ]);
 
 export const itemWarehousesRelations = relations(itemWarehouses, ({ one }) => ({
