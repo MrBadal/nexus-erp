@@ -1,5 +1,9 @@
 import { sql } from 'drizzle-orm';
+import { BadRequestException } from '@nestjs/common';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import type { DrizzleDB } from './database.module.js';
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Runs `fn` inside a transaction with the tenant GUC set for Postgres RLS
@@ -37,6 +41,19 @@ export async function withTenantScope<T>(
   tenantId: string,
   fn: (tx: DrizzleDB) => Promise<T>,
 ): Promise<T> {
+  // Validated even though set_config() below binds tenantId as a parameter
+  // (safe from injection as written today). The value it's about to set
+  // governs row visibility under RLS once Phase 1b activates it -- that's
+  // worth a cheap, unconditional format check at the one chokepoint every
+  // caller goes through, so a future refactor that swaps set_config() for a
+  // sql.raw()-built statement (an easy, plausible "optimization" someone
+  // makes without reading this file) can't turn an unvalidated tenantId into
+  // a real injection point into the GUC. Defense in depth, not a response to
+  // a currently-exploitable path.
+  if (!UUID_RE.test(tenantId)) {
+    throw new BadRequestException(`withTenantScope: tenantId is not a valid UUID: ${JSON.stringify(tenantId)}`);
+  }
+
   return db.transaction(async (tx) => {
     // set_config(), not `SET LOCAL app.tenant_id = ${tenantId}` -- Postgres's
     // SET/SET LOCAL statements do not accept bind parameters as the value
@@ -62,4 +79,41 @@ export async function currentTenantGuc(db: DrizzleDB): Promise<string | null> {
     sql`SELECT NULLIF(current_setting('app.tenant_id', true), '') AS tenant_id`,
   )) as unknown as { tenant_id: string | null }[];
   return rows[0]?.tenant_id ?? null;
+}
+
+// ─── Request-scoped tenant context (Phase 1b consumption point) ───────────
+
+/**
+ * Carries the current tenantId only — never an open transaction. A request
+ * that needs three separate DB operations opens (and commits) three separate
+ * short-lived scopes via withCurrentTenantScope() below, each reading
+ * tenantId from here; it does not hold one transaction open for the whole
+ * request. See docs/crm/02-SCHEMA-MIGRATION-DESIGN.md Part B — an earlier
+ * version of this design stashed an open tx here for the request's lifetime,
+ * which reintroduced the exact S1 problem (external I/O awaited while a
+ * transaction sits open) this module's own doc comment warns against.
+ * Populated by `TenantScopeInterceptor` (common/interceptors/tenant-scope.interceptor.ts).
+ */
+export const TENANT_ID_STORAGE = new AsyncLocalStorage<{ tenantId: string }>();
+
+/** The current request's tenantId, or null outside any scope (e.g. a
+ *  @Public() route, or code running outside a request entirely). Callers
+ *  must handle null — this never throws. */
+export function currentTenantId(): string | null {
+  return TENANT_ID_STORAGE.getStore()?.tenantId ?? null;
+}
+
+/**
+ * The shape Phase 1b's CRM services actually call: opens ONE short-lived
+ * withTenantScope for this one unit of DB work, using the tenantId already
+ * populated by TenantScopeInterceptor for the current request. Throws if
+ * called outside any tenant-scoped context (e.g. a @Public() route calling
+ * this by mistake) rather than silently running unscoped.
+ */
+export async function withCurrentTenantScope<T>(db: DrizzleDB, fn: (tx: DrizzleDB) => Promise<T>): Promise<T> {
+  const tenantId = currentTenantId();
+  if (!tenantId) {
+    throw new BadRequestException('withCurrentTenantScope: no tenant context is active for this request');
+  }
+  return withTenantScope(db, tenantId, fn);
 }
