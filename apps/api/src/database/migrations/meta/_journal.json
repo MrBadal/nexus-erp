@@ -43,6 +43,13 @@
       "when": 1786736193902,
       "tag": "0005_drift_capture_since_0004",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1786822593902,
+      "tag": "0006_fix_lead_candidates_fk_name",
+      "breakpoints": true
     }
   ]
 }
