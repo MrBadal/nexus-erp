@@ -3,7 +3,75 @@
 **Status:** Part A **fully executed and closed out** — production stamped, corrective migration applied, verified empty diff. Parts B/C revised per owner review (B1-B3, S1-S3), design only, not yet built.
 **Rule:** No migration in Part B/C is applied until Phase 1b is separately approved.
 
-**Policy breach, open, not yet closed:** `deploy/migrate-notification-holiday-permissions.sql`, added when `PermissionsGuard` was wired onto `notification.controller.ts`/`holiday-ess.controller.ts`, put the `deploy/*.sql` mechanism **back into use** — the exact mechanism Part A's closing line says is retired ("no more `push --force` against production... every schema change goes through `generate` → scratch-DB diff → `migrate`"; the same reasoning applies to ad hoc data reconciliation, not just schema DDL). That file was never applied to production and is not itself dangerous sitting in the repo, but it's a second instance of the same pattern this document exists to stop, and it needs to be replaced by a versioned migration in `apps/api/src/database/migrations/`, not deleted-and-forgotten. Tracked as open until that replacement lands (see the draft referenced in the corresponding session record — not committed as of this note, per instruction to draft only).
+**Policy breach, open, not yet closed:** `deploy/migrate-notification-holiday-permissions.sql`, added when `PermissionsGuard` was wired onto `notification.controller.ts`/`holiday-ess.controller.ts`, put the `deploy/*.sql` mechanism **back into use** — the exact mechanism Part A's closing line says is retired ("no more `push --force` against production... every schema change goes through `generate` → scratch-DB diff → `migrate`"; the same reasoning applies to ad hoc data reconciliation, not just schema DDL). That file was never applied to production and is not itself dangerous sitting in the repo, but it's a second instance of the same pattern this document exists to stop, and it needs to be replaced by a versioned migration in `apps/api/src/database/migrations/`, not deleted-and-forgotten. Tracked as open until the proposed `0007` below is finalized and lands.
+
+**Second, related contradiction found while resolving the above:** a separate spawned session (worktree `.claude/worktrees/jolly-curran-e0e52e`, branch `claude/jolly-curran-e0e52e`) drafted a `CLAUDE.md` "Branch State" section that *positively cites `deploy/migrate-notification-holiday-permissions.sql` as "the pattern"* to follow for permission-grant backfills — directly contradicting the line above. That draft is uncommitted (see its own note further down) and has not been merged; flagging here so the contradiction doesn't get silently resolved in favor of whichever change lands first.
+
+---
+
+## Proposed `0007` — role-permission reconciliation (DRAFT, not finalized, not applied)
+
+**Blocked on:** the owner's production query results (tenant count, wildcard-permission roles, roles missing `notifications:read`, roles holding `hr:read`) and resolution of the two-provisioning-paths question below. This SQL is written against what the *code* would produce — per instruction, the actual migration must be written against **observed rows**, since two live tenant-creation paths (`TenantOnboardingService.seedAdditionalRoles`, triggered by `auth.register`; and `TenantService.create` → `provisionDefaultRoles`, via `POST /tenants`) can produce structurally different `viewer` roles, and code alone can't tell you which one produced any given tenant's actual data. Treat everything below as a starting point for that finalization, not a ready-to-run file.
+
+```sql
+-- DRAFT -- not applied, not registered in meta/_journal.json, not in
+-- apps/api/src/database/migrations/. Deliberately kept out of that folder:
+-- placing an unregistered file there would recreate the exact orphan-migration
+-- problem Part A closed out (this document, Part A). Becomes
+-- 0007_reconcile_role_permissions.sql + a journal entry as one deliberate,
+-- reviewed step when approved and finalized against observed data -- not before.
+--
+-- Replaces deploy/migrate-notification-holiday-permissions.sql (see the policy
+-- breach note above). Also folds in: removing hr:read from the 'viewer' role,
+-- which code alone does not apply to already-provisioned tenants.
+--
+-- Idempotent: every guard checks current state before writing, so this is
+-- safe to run any number of times, in any order, against any tenant (including
+-- fresh ones that already got these grants correctly via the updated
+-- tenant-onboarding.service.ts seedAdditionalRoles -- this migration is a
+-- no-op against them).
+--
+-- Backfill: the two UPDATEs below.
+-- Rollback (reverts THIS migration's effect specifically, not a general
+-- toggle):
+--   UPDATE roles
+--   SET permissions = permissions - 'notifications:read' - 'notifications:write' - 'ess:read_holidays'
+--   WHERE slug != 'admin';
+--
+--   UPDATE roles
+--   SET permissions = permissions || '["hr:read"]'::jsonb
+--   WHERE slug = 'viewer'
+--     AND NOT (permissions ? 'hr:read');
+
+-- 1. Grant notifications:read / notifications:write / ess:read_holidays to
+--    every non-admin role that doesn't already have all three.
+UPDATE roles
+SET permissions = permissions
+  || (CASE WHEN NOT (permissions ? 'notifications:read') THEN '["notifications:read"]'::jsonb ELSE '[]'::jsonb END)
+  || (CASE WHEN NOT (permissions ? 'notifications:write') THEN '["notifications:write"]'::jsonb ELSE '[]'::jsonb END)
+  || (CASE WHEN NOT (permissions ? 'ess:read_holidays') THEN '["ess:read_holidays"]'::jsonb ELSE '[]'::jsonb END)
+WHERE slug != 'admin'
+  AND NOT (
+    permissions ? 'notifications:read'
+    AND permissions ? 'notifications:write'
+    AND permissions ? 'ess:read_holidays'
+  );
+
+-- 2. Remove hr:read from any 'viewer' role that has it. Scoped to slug='viewer'
+--    specifically -- does not touch any other role's hr:read grant.
+UPDATE roles
+SET permissions = permissions - 'hr:read'
+WHERE slug = 'viewer'
+  AND permissions ? 'hr:read';
+
+-- NOT covered by this draft, deliberately: the wildcard-permission bug in
+-- database/seeds/index.ts ('finance.*', '*.read') is a separate, already-
+-- ticketed consolidation task, not a data-reconciliation concern -- no live
+-- tenant was found using that seed path in the query run so far (a scan
+-- against the single known tenant found zero matches for the dot-wildcard
+-- signature; the owner's fuller query run will confirm this holds for any
+-- other tenant too).
+```
 
 ---
 
