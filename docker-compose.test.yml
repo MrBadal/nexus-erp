@@ -1,0 +1,22 @@
+# Disposable Postgres for the vitest suite (Phase 1a task 1a.1). Separate port
+# and database name from docker-compose.yml's dev instance so both can run
+# side by side. No persistent volume on purpose -- state should not survive
+# between test runs; `docker compose -f docker-compose.test.yml down -v`
+# (or a fresh `up`) gives every run a clean database.
+services:
+  postgres-test:
+    image: postgres:16
+    container_name: nexuserp-postgres-test
+    ports:
+      - '5433:5432'
+    environment:
+      POSTGRES_DB: nexuserp_test
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d nexuserp_test']
+      interval: 2s
+      timeout: 3s
+      retries: 20
