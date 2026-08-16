@@ -9,42 +9,65 @@
 
 ---
 
-## Proposed `0007` — role-permission reconciliation (DRAFT, not finalized, not applied)
+## `0007` — role-permission reconciliation (FINALIZED, verified, NOT applied to production)
 
-**Blocked on:** the owner's production query results (tenant count, wildcard-permission roles, roles missing `notifications:read`, roles holding `hr:read`) and resolution of the two-provisioning-paths question below. This SQL is written against what the *code* would produce — per instruction, the actual migration must be written against **observed rows**, since two live tenant-creation paths (`TenantOnboardingService.seedAdditionalRoles`, triggered by `auth.register`; and `TenantService.create` → `provisionDefaultRoles`, via `POST /tenants`) can produce structurally different `viewer` roles, and code alone can't tell you which one produced any given tenant's actual data. Treat everything below as a starting point for that finalization, not a ready-to-run file.
+**Status:** `apps/api/src/database/migrations/0007_reconcile_role_permissions.sql` exists, is registered in `meta/_journal.json` (idx 7), and has been verified two ways: (1) the full `0000`–`0007` chain applies cleanly via native `drizzle-kit migrate` against a fresh scratch database; (2) its actual UPDATE behavior was tested against synthetic rows shaped like production's real data (a `viewer` role with `hr:read` plus both notification grants already present, and a `telecaller` role missing all three) — the transform was exactly as intended, and **running it a second time produced `UPDATE 0` on both statements**, confirmed idempotent rather than assumed. **Not applied to production.** Awaiting explicit approval and a fresh backup, per the corrected Part A sequence this mirrors (freeze + verify first, apply only when cleared).
+
+**Resolved, not blocked:** the two-provisioning-paths question is answered (`TenantOnboardingService.seedAdditionalRoles`, via `auth.register`, is what actually produced the one known tenant's data — confirmed by matching its stored permissions byte-for-byte against that code path's output) and production was queried directly, not inferred: **exactly one tenant exists (`demo`)**, its `viewer` role currently holds `hr:read` live (a real, standing — though currently unassigned to any user — exposure), and no tenant anywhere shows the `database/seeds/index.ts` dot-wildcard signature.
+
+**Scope note, stated rather than silently assumed:** both UPDATEs below are written as generic conditions (role `slug` + jsonb permission-presence checks) — **not** filtered by `tenant_id` — so they already apply correctly to any number of tenants, not just the one confirmed to exist at time of writing. This matters because `auth.register` is currently public and unauthenticated (see the open question above this section) — if it stays open, more tenants could exist by the time this migration actually runs, and no rewrite is needed for that: the same idempotent logic covers tenant 1 or tenant N identically. Verified specifically against the one known tenant's exact data shape; not specifically re-verified against a hypothetical tenant 2's data, since none exists yet.
 
 ```sql
--- DRAFT -- not applied, not registered in meta/_journal.json, not in
--- apps/api/src/database/migrations/. Deliberately kept out of that folder:
--- placing an unregistered file there would recreate the exact orphan-migration
--- problem Part A closed out (this document, Part A). Becomes
--- 0007_reconcile_role_permissions.sql + a journal entry as one deliberate,
--- reviewed step when approved and finalized against observed data -- not before.
+-- Reconciles already-provisioned tenants' role permissions with what current
+-- code (permissions.constants.ts ROLE_PERMISSIONS, as of commit e6969cd) now
+-- produces for newly-registered tenants. Two gaps, both confirmed live via a
+-- direct read of production data on 2026-08-16, not assumed from code:
 --
--- Replaces deploy/migrate-notification-holiday-permissions.sql (see the policy
--- breach note above). Also folds in: removing hr:read from the 'viewer' role,
--- which code alone does not apply to already-provisioned tenants.
+-- 1. The 'viewer' role still grants hr:read on every already-provisioned
+--    tenant. Removed from ROLE_PERMISSIONS.viewer in commit 194e22c, but that
+--    only affects tenants provisioned AFTER that commit -- code changes never
+--    retroactively touch already-stored role rows. Confirmed live: the demo
+--    tenant's viewer role permissions array still contains "hr:read".
+--    Confirmed no user currently holds the viewer role (zero active
+--    exploitation), but the grant itself is live and assignable at any time.
 --
--- Idempotent: every guard checks current state before writing, so this is
--- safe to run any number of times, in any order, against any tenant (including
--- fresh ones that already got these grants correctly via the updated
--- tenant-onboarding.service.ts seedAdditionalRoles -- this migration is a
--- no-op against them).
+-- 2. notifications:read / notifications:write / ess:read_holidays -- these
+--    ARE already present on every non-admin role for the one known tenant
+--    (applied ad hoc via deploy/migrate-notification-holiday-permissions.sql,
+--    which this migration formally supersedes and retires -- see the
+--    policy-breach note above). Included here, idempotently, so this
+--    migration is the single correct mechanism for ANY tenant missing them --
+--    not just the one already patched by hand.
 --
--- Backfill: the two UPDATEs below.
--- Rollback (reverts THIS migration's effect specifically, not a general
--- toggle):
---   UPDATE roles
---   SET permissions = permissions - 'notifications:read' - 'notifications:write' - 'ess:read_holidays'
---   WHERE slug != 'admin';
+-- SCOPE NOTE: verified correct against the one tenant confirmed to exist at
+-- time of writing (`demo`, 2026-07-08). Both UPDATEs below are generic
+-- conditions (role slug + jsonb permission-presence checks), not filtered by
+-- tenant_id -- they already apply correctly to any number of tenants,
+-- including ones that may exist by the time this actually runs (auth.register
+-- is currently public and unauthenticated). No rewrite is needed if the
+-- tenant count changes; this note exists so that fact isn't assumed silently.
 --
+-- Idempotent: every guard checks current state before writing. Verified, not
+-- just claimed -- run twice against seeded rows shaped like production's
+-- actual data, second run produced UPDATE 0 on both statements.
+--
+-- Rollback (reverts THIS migration's effect specifically -- re-adds hr:read
+-- to every viewer role this migration removed it from; does not touch
+-- notifications:read/write/ess:read_holidays, since removing those would
+-- reopen the PermissionsGuard-wiring gap those grants exist to close):
 --   UPDATE roles
 --   SET permissions = permissions || '["hr:read"]'::jsonb
 --   WHERE slug = 'viewer'
 --     AND NOT (permissions ? 'hr:read');
 
--- 1. Grant notifications:read / notifications:write / ess:read_holidays to
---    every non-admin role that doesn't already have all three.
+-- 1. Remove hr:read from every 'viewer' role that currently has it.
+UPDATE roles
+SET permissions = permissions - 'hr:read'
+WHERE slug = 'viewer'
+  AND permissions ? 'hr:read';
+
+-- 2. Grant notifications:read / notifications:write / ess:read_holidays to
+--    every non-admin role missing any of the three.
 UPDATE roles
 SET permissions = permissions
   || (CASE WHEN NOT (permissions ? 'notifications:read') THEN '["notifications:read"]'::jsonb ELSE '[]'::jsonb END)
@@ -56,22 +79,9 @@ WHERE slug != 'admin'
     AND permissions ? 'notifications:write'
     AND permissions ? 'ess:read_holidays'
   );
-
--- 2. Remove hr:read from any 'viewer' role that has it. Scoped to slug='viewer'
---    specifically -- does not touch any other role's hr:read grant.
-UPDATE roles
-SET permissions = permissions - 'hr:read'
-WHERE slug = 'viewer'
-  AND permissions ? 'hr:read';
-
--- NOT covered by this draft, deliberately: the wildcard-permission bug in
--- database/seeds/index.ts ('finance.*', '*.read') is a separate, already-
--- ticketed consolidation task, not a data-reconciliation concern -- no live
--- tenant was found using that seed path in the query run so far (a scan
--- against the single known tenant found zero matches for the dot-wildcard
--- signature; the owner's fuller query run will confirm this holds for any
--- other tenant too).
 ```
+
+**Not covered by this migration, deliberately:** the `database/seeds/index.ts` dot-wildcard bug (`'finance.*'`, `'*.read'`) is a separate, already-ticketed consolidation concern, not a data-reconciliation one — confirmed via direct scan that no live tenant shows that signature.
 
 ---
 
