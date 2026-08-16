@@ -263,7 +263,7 @@ export class TenantOnboardingService {
         description: 'Finance module access',
         isSystem: true,
         hierarchyLevel: 50,
-        permissions: ['finance:read', 'finance:write', 'reports:read', 'ess:read_holidays', 'notifications:read', 'notifications:write'],
+        permissions: [...ROLE_PERMISSIONS.accountant],
       },
       {
         tenantId,
@@ -277,12 +277,7 @@ export class TenantOnboardingService {
         description: 'Read-only access across most modules (excludes HR)',
         isSystem: true,
         hierarchyLevel: 10,
-        permissions: [
-          'finance:read', 'selling:read', 'buying:read', 'inventory:read',
-          'crm:read', 'manufacturing:read', 'projects:read',
-          'assets:read', 'quality:read', 'helpdesk:read', 'reports:read',
-          'ess:read_holidays', 'notifications:read', 'notifications:write',
-        ],
+        permissions: [...ROLE_PERMISSIONS.viewer],
       },
       {
         tenantId,

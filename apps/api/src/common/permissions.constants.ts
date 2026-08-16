@@ -63,6 +63,28 @@ export const NOTIFICATION_PERMS = {
   WRITE: 'notifications:write',
 } as const;
 
+// ─── Finance ────────────────────────────────────────────────────
+export const FINANCE_PERMS = {
+  READ: 'finance:read',
+  WRITE: 'finance:write',
+} as const;
+
+// ─── Reports ────────────────────────────────────────────────────
+export const REPORTS_PERMS = {
+  READ: 'reports:read',
+} as const;
+
+// ─── Read-only permissions for modules not yet built out beyond a
+//     single read grant — used by the `viewer` role's cross-module access ──
+export const SELLING_PERMS = { READ: 'selling:read' } as const;
+export const BUYING_PERMS = { READ: 'buying:read' } as const;
+export const INVENTORY_PERMS = { READ: 'inventory:read' } as const;
+export const MANUFACTURING_PERMS = { READ: 'manufacturing:read' } as const;
+export const PROJECTS_PERMS = { READ: 'projects:read' } as const;
+export const ASSETS_PERMS = { READ: 'assets:read' } as const;
+export const QUALITY_PERMS = { READ: 'quality:read' } as const;
+export const HELPDESK_PERMS = { READ: 'helpdesk:read' } as const;
+
 // ─── Default permission sets per seeded role ────────────────────
 export const ROLE_PERMISSIONS = {
   admin: ['*'],
@@ -124,6 +146,36 @@ export const ROLE_PERMISSIONS = {
     CRM_PERMS.ASSIGN,
     CRM_PERMS.ACTIVITIES_READ,
     CRM_PERMS.ACTIVITIES_WRITE,
+    ESS_PERMS.READ_HOLIDAYS,
+    NOTIFICATION_PERMS.READ,
+    NOTIFICATION_PERMS.WRITE,
+  ],
+  accountant: [
+    FINANCE_PERMS.READ,
+    FINANCE_PERMS.WRITE,
+    REPORTS_PERMS.READ,
+    ESS_PERMS.READ_HOLIDAYS,
+    NOTIFICATION_PERMS.READ,
+    NOTIFICATION_PERMS.WRITE,
+  ],
+  // Read-only across every module except HR — for auditors, execs, and similar
+  // oversight roles. hr:read is deliberately excluded: a cross-module
+  // read-only role should not reach payroll, Form-16, statutory PF/ESI
+  // filings, or employee master data. Narrower HR-specific read access (e.g.
+  // org-chart) is a separate, purpose-built permission if it's ever
+  // genuinely needed -- not this one.
+  viewer: [
+    FINANCE_PERMS.READ,
+    SELLING_PERMS.READ,
+    BUYING_PERMS.READ,
+    INVENTORY_PERMS.READ,
+    CRM_PERMS.READ,
+    MANUFACTURING_PERMS.READ,
+    PROJECTS_PERMS.READ,
+    ASSETS_PERMS.READ,
+    QUALITY_PERMS.READ,
+    HELPDESK_PERMS.READ,
+    REPORTS_PERMS.READ,
     ESS_PERMS.READ_HOLIDAYS,
     NOTIFICATION_PERMS.READ,
     NOTIFICATION_PERMS.WRITE,

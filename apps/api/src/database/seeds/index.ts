@@ -28,6 +28,7 @@ import {
 } from '../schema/index.js';
 
 import { DEFAULT_CHART_OF_ACCOUNTS } from '@nexus-erp/config';
+import { ROLE_PERMISSIONS } from '../../common/permissions.constants.js';
 
 // ---------------------------------------------------------------------------
 // Connection
@@ -150,7 +151,7 @@ async function seed() {
       description: 'Full system access',
       isSystem: true,
       hierarchyLevel: 100,
-      permissions: ['*'],
+      permissions: [...ROLE_PERMISSIONS.admin],
     },
     {
       id: accountantRoleId,
@@ -160,14 +161,7 @@ async function seed() {
       description: 'Finance module access',
       isSystem: true,
       hierarchyLevel: 50,
-      // NOTE: 'finance.*' is pre-existing and does NOT actually grant anything --
-      // PermissionsGuard does an exact-string match (permissions.guard.ts), not
-      // wildcard/prefix matching, so this role effectively has zero permissions
-      // via this seed path today (unrelated pre-existing bug, not fixed here;
-      // this script isn't what seeds the live/registration-flow demo tenant --
-      // see tenant-onboarding.service.ts for that). The two new grants below are
-      // added as literal strings so they at least work correctly going forward.
-      permissions: ['finance.*', 'ess:read_holidays', 'notifications:read', 'notifications:write'],
+      permissions: [...ROLE_PERMISSIONS.accountant],
     },
     {
       id: viewerRoleId,
@@ -177,9 +171,7 @@ async function seed() {
       description: 'Read-only access',
       isSystem: true,
       hierarchyLevel: 10,
-      // NOTE: same pre-existing exact-match issue as above -- '*.read' never
-      // matches anything real. Left as-is; the two new grants are literal.
-      permissions: ['*.read', 'ess:read_holidays', 'notifications:read', 'notifications:write'],
+      permissions: [...ROLE_PERMISSIONS.viewer],
     },
     {
       tenantId,
@@ -188,13 +180,7 @@ async function seed() {
       description: 'Full HRMS access — employees, payroll, recruitment, performance, onboarding',
       isSystem: true,
       hierarchyLevel: 40,
-      permissions: [
-        'hr:read', 'hr:write', 'hr:attendance:write',
-        'hr:approve_leave', 'hr:approve_expense', 'hr:run_payroll',
-        'hr:manage_recruitment', 'hr:manage_performance', 'hr:manage_onboarding',
-        'hr:post_announcement', 'hr:manage_documents', 'hr:manage_shifts',
-        'audit:read', 'ess:read_holidays', 'notifications:read', 'notifications:write',
-      ],
+      permissions: [...ROLE_PERMISSIONS.hr_manager],
     },
     {
       tenantId,
@@ -203,11 +189,7 @@ async function seed() {
       description: 'HR operations — attendance, leave, expense approvals, recruitment',
       isSystem: true,
       hierarchyLevel: 30,
-      permissions: [
-        'hr:read', 'hr:attendance:write',
-        'hr:approve_leave', 'hr:approve_expense',
-        'hr:manage_recruitment', 'ess:read_holidays', 'notifications:read', 'notifications:write',
-      ],
+      permissions: [...ROLE_PERMISSIONS.hr_executive],
     },
     {
       tenantId,
@@ -216,10 +198,7 @@ async function seed() {
       description: 'Self-service portal access — view own profile, attendance, leave, payslips, expenses',
       isSystem: true,
       hierarchyLevel: 5,
-      permissions: [
-        'ess:read', 'ess:write', 'ess:apply_leave', 'ess:submit_expense', 'ess:check_in',
-        'ess:read_holidays', 'notifications:read', 'notifications:write',
-      ],
+      permissions: [...ROLE_PERMISSIONS.employee],
     },
   ]);
 
