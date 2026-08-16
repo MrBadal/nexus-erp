@@ -3,7 +3,7 @@
 **Status:** Approved with corrections (B1-B3, S1-S6) — this revision reflects them · **Date:** 2026-08-15
 **Depends on:** `docs/crm/00-DISCOVERY.md` (approved)
 **Rule:** No CRM feature work starts before 1a ships and is reviewed. 1a and 1b are reviewed independently.
-**Part A status:** executed and verified — see `docs/crm/02-SCHEMA-MIGRATION-DESIGN.md` Part A. Backup taken, scratch DB built and diffed against production two independent ways, exactly one real structural difference found (a constraint name), stamping mechanism determined empirically. The corrective migration is proposed there, not yet executed.
+**Part A status:** closed out — see `docs/crm/02-SCHEMA-MIGRATION-DESIGN.md` Part A. Production stamped (`0000`–`0005`), corrective `0006` applied natively (and its own portability bug caught and fixed via the re-diff step before being trusted), final structural diff against production is completely empty. `push --force` is retired going forward.
 
 Phase 1 from the original discovery doc was five projects wearing one name. Split per owner instruction:
 
@@ -136,7 +136,7 @@ Named ahead of time, because they're already visible from the discovery doc:
 
 ## 6. Exit Criteria for Phase 1a
 
-- [x] Migration hygiene, Part A: backup, scratch DB (2 ways), schema diff, stamping mechanism — executed, one real difference found and a corrective migration proposed (`02-SCHEMA-MIGRATION-DESIGN.md`), **awaiting go-ahead to apply the corrective migration and stamp production**
+- [x] Migration hygiene, Part A: backup, scratch DB (built 3 times across the process), schema diff, stamping — **fully closed**. Production stamped, `0006` applied and its own portability bug fixed mid-process, final diff empty (`02-SCHEMA-MIGRATION-DESIGN.md`)
 - [x] R8 guard audit executed across all 95 controllers / 105 classes / 694 routes: 2 real gaps found (`notification.controller.ts`, `holiday-ess.controller.ts` — `PermissionsGuard` never wired), 5 apparent gaps confirmed legitimate by design. Reported, not yet patched (out of CRM-foundation scope unless you want it pulled in).
 - [x] S6: production `invoices` table is empty — zero rows affected by the `taxAmount=0` bug today.
 - [ ] vitest running in CI against a real (disposable) Postgres, wired into `turbo.json test`

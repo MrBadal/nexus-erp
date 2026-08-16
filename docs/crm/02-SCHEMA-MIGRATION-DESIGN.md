@@ -1,7 +1,7 @@
 # Schema-First Migration Design — Phase 1a (hygiene, EXECUTED) + Phase 1b (RLS/custom-fields) preview
 
-**Status:** Part A executed and verified against production (read-only — nothing written to production yet). Parts B/C revised per owner review (B1-B3, S1-S3), design only, not yet built.
-**Rule:** No migration in Part B/C is applied until Phase 1b is separately approved. Part A's corrective step (below) is proposed, not yet executed — awaiting go-ahead.
+**Status:** Part A **fully executed and closed out** — production stamped, corrective migration applied, verified empty diff. Parts B/C revised per owner review (B1-B3, S1-S3), design only, not yet built.
+**Rule:** No migration in Part B/C is applied until Phase 1b is separately approved.
 
 ---
 
@@ -35,26 +35,21 @@ Six rows, one per migration file, in order. **The `hash` column is `sha256(raw f
 
 **Confirmed also (the reason B1 was right to be cautious): `drizzle-kit migrate` trusts its own tracking table exclusively — it does not introspect actual schema state.** The first attempt (against a scratch DB that already had the full schema from the raw-`psql` path but no tracking table) tried to re-run `0000` from the top and failed on `CREATE TYPE ... already exists`. This is exactly the failure mode a naive "just stamp the journal" would have risked in the other direction — inserting rows without verifying they're true.
 
-### Proposed corrective action (NOT YET EXECUTED — awaiting go-ahead)
+### Corrective action — executed, with the ordering bug fixed before running anything
 
-Given the diff is not empty, per the instructed sequence this becomes a real, separate corrective migration rather than a stamp-and-move-on:
+The original proposal here had steps reversed (apply DDL, then stamp) — flagged before execution: applying `0006` directly and stamping only `0000`–`0005` would leave `0006` applied-but-unrecorded, so the next `drizzle-kit migrate` would try to re-run it and fail on a constraint name that no longer exists. **Corrected sequence actually run, in order:**
 
-```sql
--- 0006_fix_lead_candidates_fk_name.sql
-ALTER TABLE lead_candidates
-  RENAME CONSTRAINT lead_candidates_tenant_id_fkey
-  TO lead_candidates_tenant_id_tenants_id_fk;
-```
+1. **Froze and committed `0005` and `0006` first.** Hashes computed from the git-committed file bytes (`git show HEAD:<path> | sha256sum`), not working-copy bytes, so nothing could shift under the stamp between computing and inserting.
+2. **Fresh `pg_dump` of production immediately before any write** (`nexuserp_prewrite_20260816_070621.dump`, 951,627 bytes — the 14 Aug backup was one write-cycle stale by the time execution actually started). Confirmed an off-VM local copy exists alongside the on-VM one.
+3. **Stamped `0000`–`0005`** into `drizzle.__drizzle_migrations` (schema + table created first and independently verified to exist before any row was inserted). Tracking-table contents and monotonic `created_at` check reported to the owner before proceeding.
+4. **Ran `drizzle-kit migrate` natively against production directly** (not a stamp — the tool's own bootstrap correctly no-op'd on the schema/table it found already present via `IF NOT EXISTS`, recognized rows 1–6 as already-satisfied by hash match, and applied **only** `0006`'s DDL, recording its own row 7). This is what actually ran the `ALTER TABLE ... RENAME CONSTRAINT` on production, and it's also what proved the stamped hashes were correct — a wrong hash here would have made `migrate` try to re-run an already-satisfied migration and fail loudly, not silently succeed.
+5. **Re-ran the full structural diff against a freshly rebuilt scratch database.**
 
-`RENAME CONSTRAINT` is a catalog-only operation — no table lock beyond a brief `ACCESS EXCLUSIVE` held for the metadata update itself (not a rewrite, not blocking reads/writes in practice at this table's size), fully reversible (`RENAME CONSTRAINT ... TO lead_candidates_tenant_id_fkey` undoes it exactly), zero data risk.
+**A real bug surfaced at step 5, exactly the kind this verification exists to catch:** the first version of `0006` used an *unconditional* `RENAME CONSTRAINT lead_candidates_tenant_id_fkey TO ...`. That name only ever existed on **production** (created via a raw `deploy/*.sql` script, outside the ORM). A fresh chain's own `0005` creates `lead_candidates` with the *correct* name directly — so the unconditional rename failed with "constraint does not exist" the moment step 5 rebuilt scratch from a clean `0000`. Fixed by wrapping the rename in a `pg_constraint` existence check (no-op on a fresh chain, still fixes production's specific history) — see the current `0006_fix_lead_candidates_fk_name.sql`. Since the file's bytes changed, production's already-stamped row 7 was **updated** (not re-inserted) to the corrected file's hash — the *outcome* on production was already correct (the rename had already run); only the recorded-migration-content needed to match the now-portable file.
 
-**Sequence to actually close this out, once approved:**
-1. Apply `0006_fix_lead_candidates_fk_name.sql` to `scratch_migration_check` (rebuilt fresh via `drizzle-kit migrate`) and re-run the full diff — confirm it's now **empty** (zero column, index, or constraint differences).
-2. Only then apply `0006` to production directly (safe, instant, catalog-only — this is real DDL that runs, not a stamp).
-3. **Then**, and only then, stamp production's `drizzle.__drizzle_migrations` table with the six rows `drizzle-kit migrate` would produce (hash = `sha256` of each of `0000`–`0005`'s file bytes as verified above, `created_at` = the journal's `when` values) — inserted directly via `INSERT INTO drizzle.__drizzle_migrations (hash, created_at) VALUES (...), (...), ...`, not by letting `migrate` run its DDL again (production already has the schema; re-running would fail on "already exists" exactly as the first empty-scratch attempt didn't, but a non-empty one did).
-4. Commit `0005_drift_capture_since_0004.sql` and `0006_fix_lead_candidates_fk_name.sql` to the repo, matching journal, matching production's now-stamped tracking table. From this point forward, **no more `push --force` against production** — every schema change goes through `generate` → scratch-DB diff → `migrate`.
+**Final verification, after the fix:** rebuilt scratch a third time from clean, full `0000`–`0006` chain applied via native `drizzle-kit migrate` with zero errors, 158 tables. Order-independent structural diff (columns, constraints, and indexes) against production: **all three exit code 0 — completely empty.** `scratch_migration_check` dropped from the production server and confirmed absent via a `pg_database` lookup; not left behind.
 
-This document stops here and reports the diff rather than proceeding to steps 2–4 unprompted, per instruction.
+From this point forward, **no more `push --force` against production.** Every schema change goes through `generate` → scratch-DB diff → `migrate`.
 
 ---
 
@@ -144,6 +139,6 @@ Postgres marks the text→`date` and text→`timestamp[tz]` casts as **`STABLE`*
 ## Exit criteria for this document
 
 - [x] Part A executed: backup taken, scratch DB built two ways, schema diff run and analyzed down to a single real difference, stamping mechanism determined empirically (not assumed)
-- [ ] Part A corrective step (0006 FK rename + re-diff + apply to prod + stamp) — **proposed, awaiting go-ahead, not executed**
+- [x] Part A corrective step: `0006` written, committed, hash-stamped, applied natively to production, a real portability bug in it caught by re-diffing and fixed, production's stamp updated to match, final diff confirmed **completely empty** (columns, constraints, indexes). `scratch_migration_check` dropped and confirmed absent. **Part A is closed.**
 - [ ] Part B (RLS mechanics, revised with `WITH CHECK`, `NULLIF`, 5 isolation cases, non-request execution paths, tx scoping/timeouts/pool sizing) — approved as the design Phase 1b will implement, not executed now
 - [ ] Part C (custom-field schema, revised with ISO-8601 text indexing and the index-cap + composite-vs-partial benchmark question) — approved as the design Phase 1b will implement, not executed now
