@@ -269,12 +269,17 @@ export class TenantOnboardingService {
         tenantId,
         name: 'Viewer',
         slug: 'viewer',
-        description: 'Read-only access across all modules',
+        // hr:read deliberately excluded: a read-only cross-module role should
+        // not reach payroll, Form-16, statutory PF/ESI filings, or employee
+        // master data. Narrower HR-specific read access (e.g. org-chart) is a
+        // separate, purpose-built permission if it's ever genuinely needed --
+        // not this one.
+        description: 'Read-only access across most modules (excludes HR)',
         isSystem: true,
         hierarchyLevel: 10,
         permissions: [
           'finance:read', 'selling:read', 'buying:read', 'inventory:read',
-          'hr:read', 'crm:read', 'manufacturing:read', 'projects:read',
+          'crm:read', 'manufacturing:read', 'projects:read',
           'assets:read', 'quality:read', 'helpdesk:read', 'reports:read',
           'ess:read_holidays', 'notifications:read', 'notifications:write',
         ],

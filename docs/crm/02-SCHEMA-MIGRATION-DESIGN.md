@@ -3,6 +3,8 @@
 **Status:** Part A **fully executed and closed out** — production stamped, corrective migration applied, verified empty diff. Parts B/C revised per owner review (B1-B3, S1-S3), design only, not yet built.
 **Rule:** No migration in Part B/C is applied until Phase 1b is separately approved.
 
+**Policy breach, open, not yet closed:** `deploy/migrate-notification-holiday-permissions.sql`, added when `PermissionsGuard` was wired onto `notification.controller.ts`/`holiday-ess.controller.ts`, put the `deploy/*.sql` mechanism **back into use** — the exact mechanism Part A's closing line says is retired ("no more `push --force` against production... every schema change goes through `generate` → scratch-DB diff → `migrate`"; the same reasoning applies to ad hoc data reconciliation, not just schema DDL). That file was never applied to production and is not itself dangerous sitting in the repo, but it's a second instance of the same pattern this document exists to stop, and it needs to be replaced by a versioned migration in `apps/api/src/database/migrations/`, not deleted-and-forgotten. Tracked as open until that replacement lands (see the draft referenced in the corresponding session record — not committed as of this note, per instruction to draft only).
+
 ---
 
 ## Part A — Phase 1a: capturing the schema drift since `0004_complex_whizzer` (EXECUTED)
