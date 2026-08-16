@@ -160,7 +160,14 @@ async function seed() {
       description: 'Finance module access',
       isSystem: true,
       hierarchyLevel: 50,
-      permissions: ['finance.*'],
+      // NOTE: 'finance.*' is pre-existing and does NOT actually grant anything --
+      // PermissionsGuard does an exact-string match (permissions.guard.ts), not
+      // wildcard/prefix matching, so this role effectively has zero permissions
+      // via this seed path today (unrelated pre-existing bug, not fixed here;
+      // this script isn't what seeds the live/registration-flow demo tenant --
+      // see tenant-onboarding.service.ts for that). The two new grants below are
+      // added as literal strings so they at least work correctly going forward.
+      permissions: ['finance.*', 'ess:read_holidays', 'notifications:read', 'notifications:write'],
     },
     {
       id: viewerRoleId,
@@ -170,7 +177,9 @@ async function seed() {
       description: 'Read-only access',
       isSystem: true,
       hierarchyLevel: 10,
-      permissions: ['*.read'],
+      // NOTE: same pre-existing exact-match issue as above -- '*.read' never
+      // matches anything real. Left as-is; the two new grants are literal.
+      permissions: ['*.read', 'ess:read_holidays', 'notifications:read', 'notifications:write'],
     },
     {
       tenantId,
@@ -184,7 +193,7 @@ async function seed() {
         'hr:approve_leave', 'hr:approve_expense', 'hr:run_payroll',
         'hr:manage_recruitment', 'hr:manage_performance', 'hr:manage_onboarding',
         'hr:post_announcement', 'hr:manage_documents', 'hr:manage_shifts',
-        'audit:read',
+        'audit:read', 'ess:read_holidays', 'notifications:read', 'notifications:write',
       ],
     },
     {
@@ -197,7 +206,7 @@ async function seed() {
       permissions: [
         'hr:read', 'hr:attendance:write',
         'hr:approve_leave', 'hr:approve_expense',
-        'hr:manage_recruitment',
+        'hr:manage_recruitment', 'ess:read_holidays', 'notifications:read', 'notifications:write',
       ],
     },
     {
@@ -207,7 +216,10 @@ async function seed() {
       description: 'Self-service portal access — view own profile, attendance, leave, payslips, expenses',
       isSystem: true,
       hierarchyLevel: 5,
-      permissions: ['ess:read', 'ess:write', 'ess:apply_leave', 'ess:submit_expense', 'ess:check_in'],
+      permissions: [
+        'ess:read', 'ess:write', 'ess:apply_leave', 'ess:submit_expense', 'ess:check_in',
+        'ess:read_holidays', 'notifications:read', 'notifications:write',
+      ],
     },
   ]);
 

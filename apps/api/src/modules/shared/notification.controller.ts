@@ -2,17 +2,20 @@ import { Controller, Get, Post, Param, Query, UseGuards, HttpCode, HttpStatus } 
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { NotificationService } from './notification.service.js';
 import { JwtAuthGuard } from '../../common/guards/auth.guard.js';
+import { PermissionsGuard } from '../../common/guards/permissions.guard.js';
+import { RequirePermissions } from '../../common/decorators/permissions.decorator.js';
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator.js';
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator.js';
 
 @ApiTags('notifications')
 @ApiBearerAuth()
 @Controller('notifications')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class NotificationController {
   constructor(private readonly notificationService: NotificationService) {}
 
   @Get()
+  @RequirePermissions('notifications:read')
   @ApiOperation({ summary: 'List notifications for the current user' })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'offset', required: false, type: Number })
@@ -32,6 +35,7 @@ export class NotificationController {
   }
 
   @Get('unread-count')
+  @RequirePermissions('notifications:read')
   @ApiOperation({ summary: 'Get unread notification count' })
   async getUnreadCount(
     @CurrentTenant() tenantId: string,
@@ -42,6 +46,7 @@ export class NotificationController {
   }
 
   @Post(':id/read')
+  @RequirePermissions('notifications:write')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Mark a notification as read' })
   async markAsRead(
@@ -53,6 +58,7 @@ export class NotificationController {
   }
 
   @Post('read-all')
+  @RequirePermissions('notifications:write')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Mark all notifications as read' })
   async markAllAsRead(

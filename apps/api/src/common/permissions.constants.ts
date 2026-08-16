@@ -18,6 +18,9 @@ export const ESS_PERMS = {
   APPLY_LEAVE: 'ess:apply_leave',
   SUBMIT_EXPENSE: 'ess:submit_expense',
   CHECK_IN: 'ess:check_in',
+  /** Tenant-wide holiday calendar — every role gets this, not just `employee`
+   *  (unlike ESS_PERMS.READ, which is specific to the self-service portal). */
+  READ_HOLIDAYS: 'ess:read_holidays',
 } as const;
 
 // ─── HR ─────────────────────────────────────────────────────────
@@ -54,6 +57,12 @@ export const AUDIT_PERMS = {
   READ: 'audit:read',
 } as const;
 
+// ─── Notifications (broadly accessible — every role manages its own) ────
+export const NOTIFICATION_PERMS = {
+  READ: 'notifications:read',
+  WRITE: 'notifications:write',
+} as const;
+
 // ─── Default permission sets per seeded role ────────────────────
 export const ROLE_PERMISSIONS = {
   admin: ['*'],
@@ -63,6 +72,9 @@ export const ROLE_PERMISSIONS = {
     ESS_PERMS.APPLY_LEAVE,
     ESS_PERMS.SUBMIT_EXPENSE,
     ESS_PERMS.CHECK_IN,
+    ESS_PERMS.READ_HOLIDAYS,
+    NOTIFICATION_PERMS.READ,
+    NOTIFICATION_PERMS.WRITE,
   ],
   hr_manager: [
     HR_PERMS.READ,
@@ -78,6 +90,9 @@ export const ROLE_PERMISSIONS = {
     HR_PERMS.MANAGE_DOCUMENTS,
     HR_PERMS.MANAGE_SHIFTS,
     AUDIT_PERMS.READ,
+    ESS_PERMS.READ_HOLIDAYS,
+    NOTIFICATION_PERMS.READ,
+    NOTIFICATION_PERMS.WRITE,
   ],
   hr_executive: [
     HR_PERMS.READ,
@@ -85,6 +100,9 @@ export const ROLE_PERMISSIONS = {
     HR_PERMS.APPROVE_LEAVE,
     HR_PERMS.APPROVE_EXPENSE,
     HR_PERMS.MANAGE_RECRUITMENT,
+    ESS_PERMS.READ_HOLIDAYS,
+    NOTIFICATION_PERMS.READ,
+    NOTIFICATION_PERMS.WRITE,
   ],
   // Inside-sales rep: works their own leads + the unassigned pool. Cannot see
   // other reps' leads or reassign.
@@ -93,6 +111,9 @@ export const ROLE_PERMISSIONS = {
     CRM_PERMS.WRITE,
     CRM_PERMS.ACTIVITIES_READ,
     CRM_PERMS.ACTIVITIES_WRITE,
+    ESS_PERMS.READ_HOLIDAYS,
+    NOTIFICATION_PERMS.READ,
+    NOTIFICATION_PERMS.WRITE,
   ],
   // Sales manager: full visibility + can assign/reassign and delete.
   sales_manager: [
@@ -103,6 +124,9 @@ export const ROLE_PERMISSIONS = {
     CRM_PERMS.ASSIGN,
     CRM_PERMS.ACTIVITIES_READ,
     CRM_PERMS.ACTIVITIES_WRITE,
+    ESS_PERMS.READ_HOLIDAYS,
+    NOTIFICATION_PERMS.READ,
+    NOTIFICATION_PERMS.WRITE,
   ],
 } as const;
 
